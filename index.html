@@ -210,6 +210,18 @@ details.top-list summary { cursor: pointer; color: var(--muted); font-size: 0.93
 .qa-rejected .qa-r { color: var(--muted); font-style: italic; white-space: normal; max-width: 60%; }
 .qa-summary { font-size: 0.9375rem; color: var(--muted); margin: 0 0 0.5rem; }
 details.why { margin: 0 0 1.75rem; max-width: 34rem; }
+.diff-sp { margin: 0 0 1rem; }
+.diff-title { margin: 0 0 0.35rem; font-size: 0.9375rem; }
+.diff-title em { font-style: italic; font-weight: 600; }
+.diff-title .pct { color: var(--muted); }
+.diff-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.diff-list li { display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem; align-items: baseline; padding: 0.45rem 0; border-bottom: 1px solid var(--line); font-size: 0.9375rem; }
+.diff-list .val { font-weight: 600; white-space: nowrap; text-align: right; min-width: 4.5rem; }
+.diff-list .val.sim { color: var(--leaf); }
+.diff-list .val.nao { color: var(--rust); }
+.diff-list .val small { display: block; font-weight: 400; color: var(--muted); font-size: 0.75rem; }
+.diff-head { color: var(--muted); font-size: 0.8125rem; }
+.diff-empty { font-size: 0.9375rem; color: var(--muted); margin: 0; }
 details.why summary { cursor: pointer; font-weight: 600; margin-bottom: 0.5rem; }
 .qa li.conflict { background: color-mix(in srgb, var(--rust) 10%, transparent); padding-inline: 0.5rem; }
 .check { margin-top: 2rem; }
@@ -334,6 +346,10 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
       <p class="qa-summary" id="guessWhySummary"></p>
       <ul class="qa" id="guessWhyList"></ul>
     </details>
+    <details class="why" id="guessDiffBlock" open hidden>
+      <summary>Como diferenciar das espécies mais parecidas</summary>
+      <div id="guessDiff"></div>
+    </details>
     <div class="row">
       <button class="btn btn-yes" id="btnRight" type="button">Confirmar esta espécie</button>
       <button class="btn btn-no" id="btnWrong" type="button">Não é essa, continuar</button>
@@ -355,6 +371,11 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
     <div class="inat" id="endInat" hidden></div>
     <div class="row">
       <button class="btn btn-main" data-action="restart" type="button">Nova identificação</button>
+    </div>
+
+    <div class="others" id="endDiffBlock" hidden>
+      <h3>Como diferenciar das espécies mais parecidas</h3>
+      <div id="endDiff"></div>
     </div>
 
     <div class="others" id="endOthersBlock" hidden>
@@ -426,6 +447,8 @@ const PESO_PADRAO_CONTRARIA = 0.2; // resposta Sim numa coluna com ! onde a cél
 const CERTEZA_PALPITE = 0.85; // probabilidade para arriscar um palpite
 const MAX_PALPITES    = 4;    // sugestões recusadas antes de encerrar
 const LS_KEY = "abelhinator.planilha";
+const PARECIDAS_MAX = 3;          // quantas espécies parecidas mostrar no resultado
+const PARECIDAS_MIN_SEMELHANCA = 0.5; // só mostra as que têm pelo menos 50% das características iguais
 const USAR_INATURALIST = true; // mostra fotos e informações do iNaturalist no resultado
 const INAT_LUGAR = 6878;       // id do Brasil no iNaturalist (link de observações)
 
@@ -500,7 +523,7 @@ function questionKey(t) {
 
 function asQuestion(h) {
   const t = h.trim().replace(/\s+/g, " ");
-  return /[?？]$/.test(t) ? t : t + "?";
+  return /[?？]/.test(t) ? t : t + "?"; // só acrescenta "?" se o título não tiver nenhum
 }
 
 function buildDataset(rows) {
@@ -1036,6 +1059,7 @@ function renderGuess() {
   fillBars($("guessOthers"), others, P);
   renderInat($("guessInat"), s);
   renderQA(S.guessing, $("guessWhyList"), $("guessWhySummary"));
+  renderDiff($("guessDiff"), $("guessDiffBlock"), S.guessing);
 }
 
 function rankedOthers(P, exclude, limit) {
@@ -1195,6 +1219,7 @@ function finish(won) {
     $("checkBlock").hidden = true;
     $("endOthersBlock").hidden = true;
     renderInat($("endInat"), s);
+    renderDiff($("endDiff"), $("endDiffBlock"), S.guessing);
     $("qaTitle").textContent = "Como cheguei a essa espécie";
     renderQA(S.guessing);
   } else {
@@ -1204,6 +1229,7 @@ function finish(won) {
     $("checkBlock").hidden = false;
     $("endInat").hidden = true;
     $("endInat")._token = null;
+    $("endDiffBlock").hidden = true;
     const P = probs();
     const rest = rankedOthers(P, null, 5);
     $("endOthersBlock").hidden = !rest.length;
@@ -1220,6 +1246,75 @@ function finish(won) {
     $("qaTitle").textContent = "Suas respostas";
     renderQA(null);
   }
+}
+
+/* ---------- Espécies parecidas ---------- */
+function shortName(name) {
+  const p = String(name).split(/\s+/);
+  return p.length >= 2 && /^[a-z]/.test(p[1]) ? `${p[0][0]}. ${p.slice(1).join(" ")}` : name;
+}
+
+function similarSpecies(idx) {
+  const a = D.species[idx];
+  const out = [];
+  D.species.forEach((b, j) => {
+    if (j === idx) return;
+    let same = 0;
+    const diffs = [];
+    D.questions.forEach((q, qi) => {
+      const va = a.v[qi], vb = b.v[qi];
+      if (va === null || vb === null) return;
+      if (a.soft[qi] && b.soft[qi]) return; // as duas só "Não por padrão": não conta
+      if (va === vb) same++;
+      else diffs.push({ q: qi, va, vb, softA: a.soft[qi], softB: b.soft[qi] });
+    });
+    const total = same + diffs.length;
+    if (!total) return;
+    out.push({ j, sim: same / total, diffs });
+  });
+  return out
+    .filter(o => o.sim >= PARECIDAS_MIN_SEMELHANCA)
+    .sort((x, y) => y.sim - x.sim || x.diffs.length - y.diffs.length)
+    .slice(0, PARECIDAS_MAX);
+}
+
+function renderDiff(box, block, idx) {
+  const list = similarSpecies(idx);
+  box.replaceChildren();
+  block.hidden = !list.length;
+  if (!list.length) return;
+  const me = D.species[idx];
+
+  list.forEach(o => {
+    const other = D.species[o.j];
+    const wrap = el("div", "diff-sp");
+    const title = el("p", "diff-title");
+    title.append(document.createTextNode("Diferente de "), el("em", null, other.name));
+    if (other.popular) title.append(document.createTextNode(` (${other.popular})`));
+    title.append(el("span", "pct", ` · ${Math.round(o.sim * 100)}% das características iguais`));
+    wrap.append(title);
+
+    if (!o.diffs.length) {
+      wrap.append(el("p", "diff-empty", "Nenhuma característica da planilha separa as duas. Vale criar uma coluna que diferencie."));
+    } else {
+      const ul = el("ul", "diff-list");
+      const head = el("li", "diff-head");
+      head.append(el("span", null, "Característica"), el("span", "val", shortName(me.name)), el("span", "val", shortName(other.name)));
+      ul.append(head);
+      o.diffs.forEach(d => {
+        const li = el("li");
+        li.append(el("span", null, D.questions[d.q].text));
+        [[d.va, d.softA], [d.vb, d.softB]].forEach(([v, soft]) => {
+          const cell = el("span", "val " + (v ? "sim" : "nao"), v ? "Sim" : "Não");
+          if (soft) cell.append(el("small", null, "vazio = Não"));
+          li.append(cell);
+        });
+        ul.append(li);
+      });
+      wrap.append(ul);
+    }
+    box.append(wrap);
+  });
 }
 
 /* Lista "pergunta → resposta", comparando com a planilha quando há uma espécie */
