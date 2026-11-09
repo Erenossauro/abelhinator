@@ -131,7 +131,7 @@ body[data-screen="end"] #end { display: block; }
 }
 
 /* ---------- Botões ---------- */
-.answers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.625rem; }
+.answers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.625rem; }
 .btn {
   border: 2px solid transparent;
   border-radius: 999px;
@@ -200,7 +200,7 @@ details.top-list summary { cursor: pointer; color: var(--muted); font-size: 0.93
 .qa .ans { font-weight: 600; white-space: nowrap; }
 .qa .ans.sim { color: var(--leaf); }
 .qa .ans.nao { color: var(--rust); }
-.qa .ans.ns { color: var(--muted); font-weight: 500; }
+.qa .ans.ns, .qa .ans.parte { color: var(--muted); font-weight: 500; }
 .qa-q { flex: 1; }
 .qa-r { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 0.1rem; }
 .qa-tag { font-size: 0.8125rem; white-space: nowrap; }
@@ -242,6 +242,12 @@ dialog {
   padding: 1.5rem;
   width: min(34rem, calc(100vw - 2rem));
 }
+#reportDlg { max-height: 85vh; overflow-y: auto; }
+#reportDlg h3 { font-size: 1rem; margin: 1.25rem 0 0.35rem; }
+.report-note { font-size: 0.875rem; color: var(--muted); margin: 0 0 0.4rem; }
+.report-ok { font-size: 0.9375rem; color: var(--leaf); margin: 0; }
+.report-list { margin: 0; padding-left: 1.1rem; font-size: 0.9375rem; }
+.report-list li { margin-bottom: 0.2rem; }
 dialog::backdrop { background: rgb(0 0 0 / 0.45); }
 dialog h2 { font-family: "Young Serif", Georgia, serif; font-weight: 400; margin: 0 0 0.75rem; font-size: 1.4rem; }
 dialog label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
@@ -256,9 +262,12 @@ dialog ol { padding-left: 1.2rem; margin: 1rem 0; font-size: 0.9375rem; color: v
 dialog ol li { margin-bottom: 0.35rem; }
 dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
 
+@media (max-width: 560px) {
+  .answers { grid-template-columns: 1fr 1fr; }
+}
 @media (max-width: 420px) {
   .answers { grid-template-columns: 1fr 1fr; }
-  .answers .btn-unsure { grid-column: 1 / -1; }
+
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
@@ -280,6 +289,7 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
     <div class="row">
       <button class="btn btn-main" id="btnStart" type="button" disabled>Começar identificação</button>
       <button class="btn btn-ghost" id="btnReload" type="button">Atualizar planilha</button>
+      <button class="link-btn" id="btnReport" type="button" disabled>Verificar planilha</button>
     </div>
     <p class="status" id="status">Carregando…</p>
     <p class="status" id="diag" hidden><a id="diagLink" target="_blank" rel="noopener">Abrir os dados da planilha para testar</a>. Se abrir ou baixar um arquivo com as espécies, a planilha está acessível.</p>
@@ -292,6 +302,7 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
     <div class="answers">
       <button class="btn btn-yes" data-answer="sim" type="button">Sim</button>
       <button class="btn btn-no" data-answer="nao" type="button">Não</button>
+      <button class="btn btn-unsure" data-answer="parte" type="button">Em parte</button>
       <button class="btn btn-unsure" data-answer="ns" type="button">Não sei</button>
     </div>
     <div class="tools">
@@ -365,6 +376,15 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
   </section>
 </div>
 
+<!-- VERIFICAÇÃO DA PLANILHA -->
+<dialog id="reportDlg">
+  <form method="dialog">
+    <h2>Verificação da planilha</h2>
+    <div id="reportBody"></div>
+    <div class="row"><button class="btn btn-main" value="close" type="submit">Fechar</button></div>
+  </form>
+</dialog>
+
 <!-- CONFIGURAÇÃO DA PLANILHA -->
 <dialog id="dlg">
   <form method="dialog" id="dlgForm">
@@ -375,6 +395,9 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
       <li>No Google Planilhas, clique em Compartilhar e escolha “Qualquer pessoa com o link: Leitor”.</li>
       <li>Abra a aba que tem as espécies e copie o link da barra do navegador (ele guarda qual aba é).</li>
       <li>Primeira coluna: nome da espécie. Demais colunas: uma pergunta por coluna, com Sim ou Não em cada célula.</li>
+      <li>Para não repetir características: crie uma linha “Grupo: Melipona” e, na coluna “Herda de”, escreva Melipona nas espécies do gênero. Células vazias da espécie copiam o valor do grupo.</li>
+      <li>Característica exclusiva: comece o título com ! (ex.: !Tem 4 listras amarelas?). Células vazias contam como Não.</li>
+      <li>Para perguntar algo só sobre abelhas sociais, comece o título com a pergunta-mãe entre colchetes: [É social] A cria fica em cachos? Para só as não sociais: [não: É social] Usa ninho-isca?</li>
     </ol>
     <div class="row">
       <button class="btn btn-ghost" value="demo" type="submit">Usar exemplo</button>
@@ -399,6 +422,7 @@ const PLANILHA_PADRAO = "https://docs.google.com/spreadsheets/d/1WzP-shndRXwjUB5
 const PESO_CONFERE   = 0.96; // resposta bate com a planilha
 const PESO_CONTRARIA = 0.03; // resposta contradiz a planilha (tolera erro)
 const PESO_VAZIO     = 0.5;  // célula vazia na planilha
+const PESO_PADRAO_CONTRARIA = 0.2; // resposta Sim numa coluna com ! onde a célula estava vazia (Não por padrão)
 const CERTEZA_PALPITE = 0.85; // probabilidade para arriscar um palpite
 const MAX_PALPITES    = 4;    // sugestões recusadas antes de encerrar
 const LS_KEY = "abelhinator.planilha";
@@ -426,7 +450,8 @@ const META = {
   nome: /^(especie|especies|nome cientifico|nome|taxon|taxa)$/,
   popular: /^(nome popular|nome comum|nomes populares|popular)/,
   imagem: /^(imagem|foto|image|url da imagem|link da foto|link da imagem)/,
-  info: /^(descricao|observacao|observacoes|info|informacoes|curiosidade|notas?)$/
+  info: /^(descricao|observacao|observacoes|info|informacoes|curiosidade|notas?)$/,
+  herda: /^(herda de|herdar de|herda|grupo pai)$/
 };
 
 function norm(s) {
@@ -459,6 +484,20 @@ function parseCSV(text) {
   return rows;
 }
 
+/* Perguntas condicionais:
+   "[É social] A cria fica em cachos?"       -> só pergunta se a abelha for social
+   "[não: É social] Usa ninho-isca?"         -> só pergunta se a abelha NÃO for social
+   O texto entre colchetes é o começo da pergunta da qual esta depende. */
+function parseHeader(h) {
+  const m = String(h).match(/^\s*\[\s*(n[aã]o\s*:\s*)?([^\]]+?)\s*\]\s*(.*)$/i);
+  if (!m) return { text: h, cond: null };
+  return { text: m[3], cond: { neg: !!m[1], ref: m[2] } };
+}
+
+function questionKey(t) {
+  return norm(t).replace(/[?？]/g, "").replace(/\s+/g, " ").trim();
+}
+
 function asQuestion(h) {
   const t = h.trim().replace(/\s+/g, " ");
   return /[?？]$/.test(t) ? t : t + "?";
@@ -476,39 +515,196 @@ function buildDataset(rows) {
   const popCol = nh.findIndex((h, i) => i !== nameCol && META.popular.test(h));
   const imgCol = nh.findIndex((h, i) => i !== nameCol && META.imagem.test(h));
   const infoCol = nh.findIndex((h, i) => i !== nameCol && META.info.test(h));
-  const metaCols = new Set([nameCol, popCol, imgCol, infoCol, ...nameLike]);
+  const inhCol = nh.findIndex((h, i) => i !== nameCol && META.herda.test(h));
+  const metaCols = new Set([nameCol, popCol, imgCol, infoCol, inhCol, ...nameLike]);
 
+  // Perguntas
   let questions = [];
   head.forEach((h, i) => {
     if (metaCols.has(i)) return;
     if (!h || h.startsWith("#") || h.startsWith("_")) return; // colunas de anotação
-    questions.push({ col: i, text: asQuestion(h) });
+    let txt = h, exclusive = false;
+    if (/^\s*!/.test(txt)) { exclusive = true; txt = txt.replace(/^\s*!\s*/, ""); }
+    const ph = parseHeader(txt);
+    let qt = String(ph.text).trim();
+    if (/^!/.test(qt)) { exclusive = true; qt = qt.replace(/^!\s*/, ""); }
+    if (!qt) return;
+    questions.push({ col: i, text: asQuestion(qt), cond: ph.cond, exclusive });
   });
 
-  let species = rows.slice(1)
+  // Linhas (espécies e grupos)
+  const isGroupName = n => /^grupo\s*:/i.test(n);
+  const rowKey = n => norm(n).replace(/^grupo\s*:\s*/, "").replace(/\s+/g, " ").trim();
+  const all = rows.slice(1)
     .filter(r => String(r[nameCol] ?? "").trim())
-    .map(r => ({
-      name: String(r[nameCol]).trim(),
-      popular: popCol >= 0 ? String(r[popCol] ?? "").trim() : "",
-      img: imgCol >= 0 ? String(r[imgCol] ?? "").trim() : "",
-      info: infoCol >= 0 ? String(r[infoCol] ?? "").trim() : "",
-      raw: questions.map(q => parseValue(r[q.col]))
-    }));
+    .map(r => {
+      const name = String(r[nameCol]).trim();
+      return {
+        name,
+        isGroup: isGroupName(name),
+        parentName: inhCol >= 0 ? String(r[inhCol] ?? "").trim() : "",
+        popular: popCol >= 0 ? String(r[popCol] ?? "").trim() : "",
+        img: imgCol >= 0 ? String(r[imgCol] ?? "").trim() : "",
+        info: infoCol >= 0 ? String(r[infoCol] ?? "").trim() : "",
+        raw: questions.map(q => parseValue(r[q.col]))
+      };
+    });
 
-  if (!species.length) throw new Error("Não encontrei nenhuma espécie na primeira coluna.");
+  // Herança: célula vazia herda o valor da linha indicada em "Herda de"
+  const byKey = new Map();
+  all.forEach((row, i) => {
+    const k = rowKey(row.name);
+    if (!byKey.has(k) || row.isGroup) byKey.set(k, i);
+  });
+  const missingParents = [];
+  const resolved = new Array(all.length);
+  function resolve(i, path) {
+    if (resolved[i]) return resolved[i];
+    const row = all[i];
+    let vals = row.raw.slice();
+    if (row.parentName) {
+      const pi = byKey.get(rowKey(row.parentName));
+      if (pi === undefined) missingParents.push(`${row.name} → ${row.parentName}`);
+      else if (!path.has(pi)) {
+        path.add(pi);
+        const pv = resolve(pi, path);
+        path.delete(pi);
+        vals = vals.map((v, q) => v === null ? pv[q] : v);
+      }
+    }
+    resolved[i] = vals;
+    return vals;
+  }
+  all.forEach((_, i) => resolve(i, new Set([i])));
+  const groups = all.filter(r => r.isGroup).length;
+
+  let species = all
+    .map((row, i) => ({ ...row, raw: resolved[i] }))
+    .filter(row => !row.isGroup)
+    .map(row => {
+      // Colunas com "!": vazio conta como Não (com menos peso)
+      const soft = questions.map((q, qi) => q.exclusive && row.raw[qi] === null);
+      return {
+        name: row.name, popular: row.popular, img: row.img, info: row.info,
+        parentName: row.parentName,
+        raw: row.raw.map((v, qi) => soft[qi] ? 0 : v),
+        rawSoft: soft
+      };
+    });
+
+  if (!species.length) throw new Error("Não encontrei nenhuma espécie na primeira coluna (linhas que começam com “Grupo:” são só modelos).");
 
   // Só vale perguntar o que separa espécies (tem pelo menos um Sim e um Não)
   const useful = questions.map((q, qi) => {
-    const vals = species.map(s => s.raw[qi]);
+    const vals = species.map(sp => sp.raw[qi]);
     return vals.includes(1) && vals.includes(0);
   });
-  const ignored = questions.length - useful.filter(Boolean).length;
+  const ignoredHeaders = questions.filter((_, i) => !useful[i]).map(q => q.text);
   const keepIdx = questions.map((_, i) => i).filter(i => useful[i]);
   questions = keepIdx.map(i => questions[i]);
-  species.forEach(s => { s.v = keepIdx.map(i => s.raw[i]); delete s.raw; });
+  species.forEach(sp => {
+    sp.v = keepIdx.map(i => sp.raw[i]);
+    sp.soft = keepIdx.map(i => sp.rawSoft[i]);
+    delete sp.raw; delete sp.rawSoft;
+  });
 
   if (!questions.length) throw new Error("Nenhuma coluna tem respostas Sim e Não suficientes para fazer perguntas.");
-  return { species, questions, ignored };
+
+  // Liga cada pergunta condicional à pergunta da qual ela depende
+  const unresolved = [];
+  questions.forEach((q, qi) => {
+    if (!q.cond) return;
+    const ref = questionKey(q.cond.ref);
+    const parent = questions.findIndex((o, oi) => oi !== qi && questionKey(o.text).startsWith(ref));
+    if (parent < 0) { unresolved.push(q.cond.ref); q.cond = null; return; }
+    q.cond = { parent, want: q.cond.neg ? 0 : 1 };
+  });
+
+  return {
+    species, questions, ignored: ignoredHeaders.length, ignoredHeaders,
+    unresolved, missingParents: [...new Set(missingParents)], groups
+  };
+}
+
+/* =========================================================
+   VERIFICAÇÃO DA PLANILHA
+   ========================================================= */
+function sheetReport() {
+  const sp = D.species, qs = D.questions;
+
+  // 1. Pares que nenhuma pergunta consegue separar
+  const pairs = [];
+  for (let i = 0; i < sp.length; i++) {
+    for (let j = i + 1; j < sp.length; j++) {
+      let separable = false;
+      for (let q = 0; q < qs.length; q++) {
+        const a = sp[i].v[q], b = sp[j].v[q];
+        if (a !== null && b !== null && a !== b) { separable = true; break; }
+      }
+      if (!separable) pairs.push([sp[i].name, sp[j].name]);
+    }
+  }
+
+  // 2. Preenchimento por espécie (só conta perguntas que se aplicam a ela)
+  const fill = sp.map(s => {
+    let applicable = 0, known = 0;
+    qs.forEach((q, qi) => {
+      if (q.cond) {
+        const pv = s.v[q.cond.parent];
+        if (pv !== null && pv !== q.cond.want) return; // não se aplica
+      }
+      applicable++;
+      if (s.v[qi] !== null && !s.soft[qi]) known++;
+    });
+    return { name: s.name, pct: applicable ? known / applicable : 1, known, applicable };
+  }).sort((a, b) => a.pct - b.pct);
+
+  return { pairs, fill };
+}
+
+function showReport() {
+  if (!D) return;
+  const r = sheetReport();
+  const box = $("reportBody");
+  box.replaceChildren();
+
+  function section(title, items, emptyText, note) {
+    box.append(el("h3", null, title));
+    if (note) box.append(el("p", "report-note", note));
+    if (!items.length) { box.append(el("p", "report-ok", emptyText)); return; }
+    const ul = el("ul", "report-list");
+    items.forEach(t => ul.append(el("li", null, t)));
+    box.append(ul);
+  }
+
+  box.append(el("p", "report-note",
+    `${D.species.length} espécies, ${D.questions.length} perguntas em uso` +
+    (D.groups ? `, ${D.groups} grupo(s) modelo` : "") + "."));
+
+  section("Espécies que a página não consegue separar",
+    r.pairs.slice(0, 40).map(([a, b]) => `${a} e ${b}`),
+    "Todas as espécies podem ser separadas por pelo menos uma pergunta.",
+    r.pairs.length
+      ? `Nenhuma pergunta tem Sim para uma e Não para a outra. Basta uma coluna que diferencie cada par.${r.pairs.length > 40 ? ` Mostrando 40 de ${r.pairs.length}.` : ""}`
+      : null);
+
+  section("Espécies com menos informação",
+    r.fill.filter(f => f.pct < 0.6).slice(0, 15)
+      .map(f => `${f.name}: ${Math.round(f.pct * 100)}% preenchido (${f.known} de ${f.applicable})`),
+    "Todas as espécies têm pelo menos 60% das perguntas preenchidas.",
+    "Conta só as perguntas que se aplicam à espécie (perguntas de ninho de social não contam para solitárias).");
+
+  section("Colunas que não estão sendo usadas",
+    D.ignoredHeaders,
+    "Todas as colunas estão sendo usadas.",
+    D.ignoredHeaders.length ? "Cada coluna precisa de pelo menos um Sim e um Não. Para características exclusivas, comece o título com ! e as células vazias contam como Não." : null);
+
+  section("Referências que não foram encontradas",
+    [...D.unresolved.map(u => `Pergunta entre colchetes: “${u}”`),
+     ...D.missingParents.map(m => `Herda de: ${m}`)],
+    "Nenhum problema com colchetes ou com a coluna “Herda de”.");
+
+  $("reportDlg").showModal();
 }
 
 function buildCsvUrl(link) {
@@ -549,6 +745,7 @@ function setStatus(text, isError = false) {
 
 async function loadData() {
   $("btnStart").disabled = true;
+  $("btnReport").disabled = true;
   $("diag").hidden = true;
   const fromUrl = new URLSearchParams(location.search).get("planilha");
   const link = fromUrl || safeGet(LS_KEY) || PLANILHA_PADRAO;
@@ -664,8 +861,13 @@ function showReady(prefix) {
   let s = prefix ? prefix + " " : (D.source === "planilha" ? "Planilha conectada. " : "");
   s += `${n} espécies, ${q} perguntas.`;
   if (D.ignored) s += ` ${D.ignored} coluna(s) sem Sim e Não suficientes foram deixadas de fora.`;
+  if (D.groups) s += ` ${D.groups} grupo(s) modelo.`;
+  const conds = D.questions.filter(q => q.cond).length;
+  if (conds) s += ` ${conds} pergunta(s) condicional(is).`;
+  if ((D.unresolved && D.unresolved.length) || (D.missingParents && D.missingParents.length)) s += " Use “Verificar planilha” para ver os detalhes.";
   setStatus(s);
   $("btnStart").disabled = false;
+  $("btnReport").disabled = false;
 }
 
 /* =========================================================
@@ -714,10 +916,26 @@ function activeSet(P) {
   return P.map((p, i) => i).filter(i => P[i] > 0 && P[i] >= max * 0.15);
 }
 
+/* Uma pergunta condicional só entra quando a pergunta-mãe foi respondida
+   do jeito certo, ou quando todas as espécies que restam já cumprem a condição. */
+function conditionMet(qi, active) {
+  const c = D.questions[qi].cond;
+  if (!c) return true;
+  const h = S.history.find(x => x.q === c.parent);
+  if (h && (h.a === "sim" || h.a === "nao")) return (h.a === "sim" ? 1 : 0) === c.want;
+  let known = 0, agree = 0;
+  for (const i of active) {
+    const v = D.species[i].v[c.parent];
+    if (v !== null) { known++; if (v === c.want) agree++; }
+  }
+  return known > 0 && agree === known;
+}
+
 function pickQuestion(active, P) {
   let best = [], bestScore = 0;
   D.questions.forEach((_, qi) => {
     if (S.asked.has(qi)) return;
+    if (!conditionMet(qi, active)) return;
     let y = 0, n = 0, u = 0;
     for (const i of active) {
       const v = D.species[i].v[qi];
@@ -759,11 +977,13 @@ function answer(a) {
   S.stack.push(snapshot());
   S.asked.add(qi);
   S.history.push({ q: qi, a });
-  if (a !== "ns") {
+  if (a === "sim" || a === "nao") { // "Em parte" e "Não sei" não mudam nada
     const want = a === "sim" ? 1 : 0;
     D.species.forEach((s, i) => {
       const v = s.v[qi];
-      S.w[i] *= v === null ? PESO_VAZIO : (v === want ? PESO_CONFERE : PESO_CONTRARIA);
+      S.w[i] *= v === null ? PESO_VAZIO
+        : v === want ? PESO_CONFERE
+        : (s.soft[qi] ? PESO_PADRAO_CONTRARIA : PESO_CONTRARIA);
     });
     const t = S.w.reduce((x, y) => x + y, 0);
     if (t > 0) S.w = S.w.map(x => x / t);
@@ -1005,8 +1225,8 @@ function finish(won) {
 /* Lista "pergunta → resposta", comparando com a planilha quando há uma espécie */
 function renderQA(speciesIdx, ul = $("qaList"), summaryEl = $("qaSummary")) {
   ul.innerHTML = "";
-  const labels = { sim: "Sim", nao: "Não", ns: "Não sei" };
-  let ok = 0, conflicts = 0, empty = 0, skipped = 0;
+  const labels = { sim: "Sim", nao: "Não", parte: "Em parte", ns: "Não sei" };
+  let ok = 0, conflicts = 0, empty = 0, skipped = 0, partial = 0;
 
   S.history.forEach(({ q, a }) => {
     const li = el("li");
@@ -1015,13 +1235,14 @@ function renderQA(speciesIdx, ul = $("qaList"), summaryEl = $("qaSummary")) {
     right.append(el("span", "ans " + a, labels[a]));
 
     if (a === "ns") skipped++;
+    else if (a === "parte") partial++;
     else if (speciesIdx !== null) {
       const v = D.species[speciesIdx].v[q];
       const want = a === "sim" ? 1 : 0;
       let tag;
       if (v === null) { tag = el("span", "qa-tag empty", "vazio na planilha"); empty++; }
-      else if (v === want) { tag = el("span", "qa-tag ok", "✓ confere"); ok++; }
-      else { tag = el("span", "qa-tag bad", `✗ planilha: ${v ? "Sim" : "Não"}`); li.classList.add("conflict"); conflicts++; }
+      else if (v === want) { tag = el("span", "qa-tag ok", D.species[speciesIdx].soft[q] ? "✓ confere (vazio = Não)" : "✓ confere"); ok++; }
+      else { tag = el("span", "qa-tag bad", `✗ planilha: ${v ? "Sim" : "Não"}${D.species[speciesIdx].soft[q] ? " (vazio = Não)" : ""}`); li.classList.add("conflict"); conflicts++; }
       right.append(tag);
     }
     li.append(left, right);
@@ -1048,6 +1269,7 @@ function renderQA(speciesIdx, ul = $("qaList"), summaryEl = $("qaSummary")) {
     } else {
       parts.push(`${S.history.length} pergunta${S.history.length === 1 ? "" : "s"} respondida${S.history.length === 1 ? "" : "s"}`);
     }
+    if (partial) parts.push(`${partial} “em parte”`);
     if (skipped) parts.push(`${skipped} “não sei”`);
     summaryEl.textContent = parts.join(", ") + ".";
   }
@@ -1149,6 +1371,7 @@ function fillBars(ul, idx, P) {
    ========================================================= */
 $("btnStart").addEventListener("click", () => D && newGame());
 $("btnReload").addEventListener("click", loadData);
+$("btnReport").addEventListener("click", showReport);
 
 document.addEventListener("click", e => {
   const ans = e.target.closest("[data-answer]");
@@ -1185,6 +1408,7 @@ document.addEventListener("keydown", e => {
   if (k === "s") answer("sim");
   else if (k === "n") answer("nao");
   else if (k === "?" || k === "d") answer("ns");
+  else if (k === "p") answer("parte");
   else if (k === "backspace") { e.preventDefault(); undo(); }
 });
 
