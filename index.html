@@ -887,17 +887,29 @@ async function loadGuide(link) {
   if (!rows || rows.length < 2 || !D) return;
 
   const head = rows[0].map(h => norm(h));
-  if (!/^pergunta|^caracteristica/.test(head[0] || "")) return; // aba não existe ou não é o guia
-  const imgCols = head.map((h, i) => /^(imagem|foto|image)/.test(h) ? i : -1).filter(i => i >= 0);
-  const txtCol = head.findIndex(h => /^(explicacao|descricao|como observar|dica|texto)/.test(h));
+  const hasHeader = /^(pergunta|caracteristica)/.test(head[0] || "");
+  const isUrl = v => /^https?:\/\//.test(String(v || "").trim());
+  let entries;
 
-  const entries = rows.slice(1)
-    .filter(r => String(r[0] || "").trim())
-    .map(r => ({
-      key: questionKey(stripHeaderMarks(r[0])),
-      imgs: imgCols.map(i => String(r[i] || "").trim()).filter(u => /^https?:\/\//.test(u)).map(toDirectImage),
+  if (hasHeader) {
+    const imgCols = head.map((h, i) => /^(imagem|foto|image)/.test(h) ? i : -1).filter(i => i >= 0);
+    const txtCol = head.findIndex(h => /^(explicacao|descricao|como observar|dica|texto)/.test(h));
+    entries = rows.slice(1).map(r => ({
+      q: r[0],
+      imgs: imgCols.map(i => String(r[i] || "").trim()).filter(isUrl),
       text: txtCol >= 0 ? String(r[txtCol] || "").trim() : ""
-    }))
+    }));
+  } else {
+    // Sem cabeçalho: coluna A = pergunta, links = imagens, outro texto = explicação
+    entries = rows.map(r => ({
+      q: r[0],
+      imgs: r.slice(1).map(v => String(v || "").trim()).filter(isUrl),
+      text: r.slice(1).map(v => String(v || "").trim()).filter(v => v && !isUrl(v)).join(" ")
+    }));
+  }
+  entries = entries
+    .filter(e => String(e.q || "").trim())
+    .map(e => ({ key: questionKey(stripHeaderMarks(e.q)), imgs: e.imgs.map(toDirectImage), text: e.text }))
     .filter(e => e.key && (e.imgs.length || e.text));
 
   let matched = 0;
