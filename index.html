@@ -201,6 +201,16 @@ details.top-list summary { cursor: pointer; color: var(--muted); font-size: 0.93
 .qa .ans.sim { color: var(--leaf); }
 .qa .ans.nao { color: var(--rust); }
 .qa .ans.ns { color: var(--muted); font-weight: 500; }
+.qa-q { flex: 1; }
+.qa-r { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 0.1rem; }
+.qa-tag { font-size: 0.8125rem; white-space: nowrap; }
+.qa-tag.ok { color: var(--leaf); }
+.qa-tag.bad { color: var(--rust); font-weight: 600; }
+.qa-tag.empty { color: var(--muted); }
+.qa-rejected .qa-r { color: var(--muted); font-style: italic; white-space: normal; max-width: 60%; }
+.qa-summary { font-size: 0.9375rem; color: var(--muted); margin: 0 0 0.5rem; }
+details.why { margin: 0 0 1.75rem; max-width: 34rem; }
+details.why summary { cursor: pointer; font-weight: 600; margin-bottom: 0.5rem; }
 .qa li.conflict { background: color-mix(in srgb, var(--rust) 10%, transparent); padding-inline: 0.5rem; }
 .check { margin-top: 2rem; }
 /* ---------- iNaturalist ---------- */
@@ -308,6 +318,11 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
     <img class="guess-img" id="guessImg" alt="" hidden>
     <p class="guess-info" id="guessInfo" hidden></p>
     <div class="inat" id="guessInat" hidden></div>
+    <details class="why" id="guessWhy" open>
+      <summary>Como cheguei a essa espécie</summary>
+      <p class="qa-summary" id="guessWhySummary"></p>
+      <ul class="qa" id="guessWhyList"></ul>
+    </details>
     <div class="row">
       <button class="btn btn-yes" id="btnRight" type="button">Confirmar esta espécie</button>
       <button class="btn btn-no" id="btnWrong" type="button">Não é essa, continuar</button>
@@ -343,7 +358,8 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
     </div>
 
     <div class="summary">
-      <h3>Suas respostas</h3>
+      <h3 id="qaTitle">Suas respostas</h3>
+      <p class="qa-summary" id="qaSummary"></p>
       <ul class="qa" id="qaList"></ul>
     </div>
   </section>
@@ -799,6 +815,7 @@ function renderGuess() {
   $("guessOthersBlock").hidden = !others.length;
   fillBars($("guessOthers"), others, P);
   renderInat($("guessInat"), s);
+  renderQA(S.guessing, $("guessWhyList"), $("guessWhySummary"));
 }
 
 function rankedOthers(P, exclude, limit) {
@@ -958,6 +975,7 @@ function finish(won) {
     $("checkBlock").hidden = true;
     $("endOthersBlock").hidden = true;
     renderInat($("endInat"), s);
+    $("qaTitle").textContent = "Como cheguei a essa espécie";
     renderQA(S.guessing);
   } else {
     $("endTitle").textContent = "Não foi possível chegar a uma espécie.";
@@ -979,39 +997,59 @@ function finish(won) {
       .sort((a, b) => a.s.name.localeCompare(b.s.name, "pt-BR"))
       .forEach(({ s, i }) => sel.add(new Option(s.popular ? `${s.name} (${s.popular})` : s.name, i)));
     $("checkResult").textContent = "";
+    $("qaTitle").textContent = "Suas respostas";
     renderQA(null);
   }
 }
 
-function renderQA(speciesIdx) {
-  const ul = $("qaList");
+/* Lista "pergunta → resposta", comparando com a planilha quando há uma espécie */
+function renderQA(speciesIdx, ul = $("qaList"), summaryEl = $("qaSummary")) {
   ul.innerHTML = "";
   const labels = { sim: "Sim", nao: "Não", ns: "Não sei" };
-  let conflicts = 0;
+  let ok = 0, conflicts = 0, empty = 0, skipped = 0;
+
   S.history.forEach(({ q, a }) => {
-    const li = document.createElement("li");
-    const qt = document.createElement("span");
-    qt.textContent = D.questions[q].text;
-    const an = document.createElement("span");
-    an.className = "ans " + a;
-    an.textContent = labels[a];
-    if (speciesIdx !== null && a !== "ns") {
+    const li = el("li");
+    const left = el("span", "qa-q", D.questions[q].text);
+    const right = el("span", "qa-r");
+    right.append(el("span", "ans " + a, labels[a]));
+
+    if (a === "ns") skipped++;
+    else if (speciesIdx !== null) {
       const v = D.species[speciesIdx].v[q];
-      if (v !== null && v !== (a === "sim" ? 1 : 0)) {
-        li.classList.add("conflict");
-        an.textContent += ` (planilha: ${v ? "Sim" : "Não"})`;
-        conflicts++;
-      } else if (v === null) {
-        an.textContent += " (vazio na planilha)";
-      }
+      const want = a === "sim" ? 1 : 0;
+      let tag;
+      if (v === null) { tag = el("span", "qa-tag empty", "vazio na planilha"); empty++; }
+      else if (v === want) { tag = el("span", "qa-tag ok", "✓ confere"); ok++; }
+      else { tag = el("span", "qa-tag bad", `✗ planilha: ${v ? "Sim" : "Não"}`); li.classList.add("conflict"); conflicts++; }
+      right.append(tag);
     }
-    li.append(qt, an);
+    li.append(left, right);
     ul.append(li);
   });
-  if (!S.history.length) {
-    const li = document.createElement("li");
-    li.textContent = "Nenhuma pergunta respondida.";
+
+  // Espécies que foram sugeridas e recusadas
+  const rejected = [...S.rejected].filter(i => i !== speciesIdx);
+  if (rejected.length) {
+    const li = el("li", "qa-rejected");
+    li.append(el("span", "qa-q", "Sugestões recusadas"),
+              el("span", "qa-r", rejected.map(i => D.species[i].name).join(", ")));
     ul.append(li);
+  }
+
+  if (!S.history.length) ul.append(el("li", null, "Nenhuma pergunta respondida."));
+
+  if (summaryEl) {
+    const parts = [];
+    if (speciesIdx !== null) {
+      parts.push(`${ok} resposta${ok === 1 ? "" : "s"} confere${ok === 1 ? "" : "m"} com a planilha`);
+      if (conflicts) parts.push(`${conflicts} contradiz${conflicts === 1 ? "" : "em"}`);
+      if (empty) parts.push(`${empty} sem informação`);
+    } else {
+      parts.push(`${S.history.length} pergunta${S.history.length === 1 ? "" : "s"} respondida${S.history.length === 1 ? "" : "s"}`);
+    }
+    if (skipped) parts.push(`${skipped} “não sei”`);
+    summaryEl.textContent = parts.join(", ") + ".";
   }
   return conflicts;
 }
