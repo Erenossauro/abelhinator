@@ -130,6 +130,14 @@ body[data-screen="end"] #end { display: block; }
   min-height: 2.4em;
 }
 
+.q-guide { margin: -0.75rem 0 1.5rem; }
+.q-imgs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.q-imgs button { flex: 0 0 auto; padding: 0; border: 0; background: var(--cell); border-radius: 6px; overflow: hidden; cursor: zoom-in; }
+.q-imgs img { display: block; height: 11rem; max-width: min(100%, 22rem); object-fit: cover; }
+.q-imgs:has(button:only-child) img { max-width: 100%; }
+.q-guide figcaption { font-size: 0.9375rem; color: var(--muted); margin-top: 0.5rem; max-width: 34rem; }
+.q-guide figcaption:empty { display: none; }
+
 /* ---------- Botões ---------- */
 .answers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.625rem; }
 .btn {
@@ -311,6 +319,10 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
   <section class="screen" id="play">
     <p class="counter" id="counter">Pergunta 1</p>
     <h2 class="question" id="question" aria-live="polite"></h2>
+    <figure class="q-guide" id="qGuide" hidden>
+      <div class="q-imgs" id="qImgs"></div>
+      <figcaption id="qText"></figcaption>
+    </figure>
     <div class="answers">
       <button class="btn btn-yes" data-answer="sim" type="button">Sim</button>
       <button class="btn btn-no" data-answer="nao" type="button">Não</button>
@@ -418,6 +430,7 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
       <li>Primeira coluna: nome da espécie. Demais colunas: uma pergunta por coluna, com Sim ou Não em cada célula.</li>
       <li>Para não repetir características: crie uma linha “Grupo: Melipona” e, na coluna “Herda de”, escreva Melipona nas espécies do gênero. Células vazias da espécie copiam o valor do grupo.</li>
       <li>Característica exclusiva: comece o título com ! (ex.: !Tem 4 listras amarelas?). Células vazias contam como Não.</li>
+      <li>Imagens das características: crie uma aba chamada “Perguntas” com as colunas Pergunta, Imagem (pode ter Imagem 2, Imagem 3…) e Explicação.</li>
       <li>Para perguntar algo só sobre abelhas sociais, comece o título com a pergunta-mãe entre colchetes: [É social] A cria fica em cachos? Para só as não sociais: [não: É social] Usa ninho-isca?</li>
     </ol>
     <div class="row">
@@ -452,6 +465,7 @@ const MAX_PALPITES    = 4;    // sugestões recusadas antes de encerrar
 const LS_KEY = "abelhinator.planilha";
 const PARECIDAS_MAX = 3;          // quantas espécies parecidas mostrar no resultado
 const PARECIDAS_MIN_SEMELHANCA = 0.5; // só mostra as que têm pelo menos 50% das características iguais
+const ABA_GUIA = "Perguntas"; // aba com imagens e explicações de cada característica
 const USAR_INATURALIST = true; // mostra fotos e informações do iNaturalist no resultado
 const INAT_LUGAR = 6878;       // id do Brasil no iNaturalist (link de observações)
 
@@ -805,6 +819,7 @@ async function loadData() {
       D = buildDataset(rows);
       D.source = "planilha";
       showReady();
+      loadGuide(link); // aba de imagens das características (opcional)
     } catch (e) {
       D = null;
       setStatus(e.message, true);
@@ -843,6 +858,83 @@ function buildJsonpUrl(link) {
   const gid = (link.match(/[#&?]gid=(\d+)/) || [])[1];
   return `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?headers=1` +
          (gid ? `&gid=${gid}` : "") + "&tqx=responseHandler:__CB__&_=" + Date.now();
+}
+
+/* ---------- Aba "Perguntas": imagens e explicações ---------- */
+function buildTabUrls(link, sheetName) {
+  if (/\/spreadsheets\/d\/e\//.test(link)) return null; // "publicar na web" não permite escolher aba
+  const m = link.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) || link.match(/^([a-zA-Z0-9-_]{25,})$/);
+  if (!m) return null;
+  const base = `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?headers=1&sheet=${encodeURIComponent(sheetName)}`;
+  return {
+    csv: `${base}&tqx=out:csv&_=${Date.now()}`,
+    jsonp: `${base}&tqx=responseHandler:__CB__&_=${Date.now()}`
+  };
+}
+
+function stripHeaderMarks(t) {
+  let x = String(t || "").trim().replace(/^!\s*/, "");
+  x = parseHeader(x).text;
+  return String(x).replace(/^!\s*/, "");
+}
+
+async function loadGuide(link) {
+  const urls = buildTabUrls(link, ABA_GUIA);
+  if (!urls || !D) return;
+  let rows = null;
+  try { rows = await readViaFetch(urls.csv); }
+  catch { try { rows = gvizToRows(await loadJsonp(urls.jsonp)); } catch { return; } }
+  if (!rows || rows.length < 2 || !D) return;
+
+  const head = rows[0].map(h => norm(h));
+  if (!/^pergunta|^caracteristica/.test(head[0] || "")) return; // aba não existe ou não é o guia
+  const imgCols = head.map((h, i) => /^(imagem|foto|image)/.test(h) ? i : -1).filter(i => i >= 0);
+  const txtCol = head.findIndex(h => /^(explicacao|descricao|como observar|dica|texto)/.test(h));
+
+  const entries = rows.slice(1)
+    .filter(r => String(r[0] || "").trim())
+    .map(r => ({
+      key: questionKey(stripHeaderMarks(r[0])),
+      imgs: imgCols.map(i => String(r[i] || "").trim()).filter(u => /^https?:\/\//.test(u)).map(toDirectImage),
+      text: txtCol >= 0 ? String(r[txtCol] || "").trim() : ""
+    }))
+    .filter(e => e.key && (e.imgs.length || e.text));
+
+  let matched = 0;
+  D.questions.forEach(q => {
+    const k = questionKey(q.text);
+    const e = entries.find(x => x.key === k) || entries.find(x => k.startsWith(x.key) || x.key.startsWith(k));
+    q.guide = e || null;
+    if (e) matched++;
+  });
+  if (matched) {
+    const st = $("status");
+    st.textContent += ` ${matched} característica(s) com imagem ou explicação.`;
+  }
+  if (document.body.dataset.screen === "play" && S) renderGuide();
+}
+
+function renderGuide() {
+  const g = D.questions[S.current] && D.questions[S.current].guide;
+  const fig = $("qGuide");
+  if (!g) { fig.hidden = true; return; }
+  const box = $("qImgs");
+  box.replaceChildren();
+  g.imgs.forEach((src, k) => {
+    const b = el("button");
+    b.type = "button";
+    b.title = "Abrir imagem maior";
+    b.addEventListener("click", () => window.open(src, "_blank", "noopener"));
+    const img = el("img");
+    img.src = src;
+    img.alt = `Exemplo ${k + 1}: ${D.questions[S.current].text}`;
+    img.onerror = () => b.remove();
+    b.append(img);
+    box.append(b);
+  });
+  box.hidden = !g.imgs.length;
+  $("qText").textContent = g.text;
+  fig.hidden = false;
 }
 
 function loadJsonp(url) {
@@ -1037,6 +1129,7 @@ function renderPlay() {
   setScreen("play");
   $("counter").textContent = `Pergunta ${S.history.length + 1}`;
   $("question").textContent = D.questions[S.current].text;
+  renderGuide();
   document.querySelectorAll('[data-action="undo"]').forEach(b => b.disabled = !S.stack.length);
   renderComb();
 }
