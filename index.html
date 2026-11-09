@@ -441,10 +441,13 @@ const PLANILHA_PADRAO = "https://docs.google.com/spreadsheets/d/1WzP-shndRXwjUB5
 
 /* Ajustes do "cérebro" */
 const PESO_CONFERE   = 0.96; // resposta bate com a planilha
-const PESO_CONTRARIA = 0.03; // resposta contradiz a planilha (tolera erro)
+const PESO_CONTRARIA = 0.08; // resposta contradiz a planilha (tolera erro)
 const PESO_VAZIO     = 0.5;  // célula vazia na planilha
 const PESO_PADRAO_CONTRARIA = 0.2; // resposta Sim numa coluna com ! onde a célula estava vazia (Não por padrão)
-const CERTEZA_PALPITE = 0.85; // probabilidade para arriscar um palpite
+const PERGUNTAR_ATE_ESGOTAR = true; // true: só sugere quando não houver mais pergunta que separe as candidatas
+const CERTEZA_PALPITE = 0.85; // usado só se PERGUNTAR_ATE_ESGOTAR = false
+const LIMIAR_CANDIDATA = 0.005; // espécie continua candidata enquanto tiver pelo menos 0,5% da chance da mais provável
+                                // (com PESO_CONTRARIA = 0.08, isso tolera até 2 respostas que contradizem a planilha)
 const MAX_PALPITES    = 4;    // sugestões recusadas antes de encerrar
 const LS_KEY = "abelhinator.planilha";
 const PARECIDAS_MAX = 3;          // quantas espécies parecidas mostrar no resultado
@@ -936,7 +939,7 @@ function probs() {
 function activeSet(P) {
   const max = Math.max(...P);
   if (max <= 0) return [];
-  return P.map((p, i) => i).filter(i => P[i] > 0 && P[i] >= max * 0.15);
+  return P.map((p, i) => i).filter(i => P[i] > 0 && P[i] >= max * LIMIAR_CANDIDATA);
 }
 
 /* Uma pergunta condicional só entra quando a pergunta-mãe foi respondida
@@ -984,7 +987,8 @@ function next() {
   const top = alive[0];
   const q = pickQuestion(active, P);
 
-  if (active.length === 1 || P[top] >= CERTEZA_PALPITE || q === null) {
+  const confiante = !PERGUNTAR_ATE_ESGOTAR && P[top] >= CERTEZA_PALPITE;
+  if (active.length === 1 || confiante || q === null) {
     S.guessing = top;
     S.current = null;
     return renderGuess();
