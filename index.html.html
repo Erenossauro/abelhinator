@@ -1,0 +1,1180 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Abelhinator · identificação de abelhas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Young+Serif&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   ABELHINATOR — identificação de abelhas a partir de uma planilha
+   ========================================================= */
+
+:root {
+  color-scheme: light;
+  --bg: #EDF0E3;        /* folha clara */
+  --surface: #F8F9F2;
+  --ink: #2B1D0E;       /* própolis */
+  --muted: #6B5E4B;
+  --pollen: #E5A11C;    /* pólen */
+  --pollen-ink: #2B1D0E;
+  --leaf: #3F5E3A;      /* folha */
+  --leaf-ink: #F8F9F2;
+  --rust: #8C3B2A;
+  --rust-ink: #F8F9F2;
+  --line: #C9CDB8;
+  --cell: #CDD1BD;
+  --focus: #1F6FB2;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #1A1710;
+    --surface: #242019;
+    --ink: #F1EAD8;
+    --muted: #B5A88F;
+    --pollen: #F0B43A;
+    --pollen-ink: #1A1710;
+    --leaf: #7FA36F;
+    --leaf-ink: #1A1710;
+    --rust: #D0775F;
+    --rust-ink: #1A1710;
+    --line: #3D382B;
+    --cell: #3A3528;
+    --focus: #8CC4FF;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1A1710; --surface: #242019; --ink: #F1EAD8; --muted: #B5A88F;
+  --pollen: #F0B43A; --pollen-ink: #1A1710; --leaf: #7FA36F; --leaf-ink: #1A1710;
+  --rust: #D0775F; --rust-ink: #1A1710; --line: #3D382B; --cell: #3A3528; --focus: #8CC4FF;
+}
+
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  min-height: 100%;
+}
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.wrap {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 3rem;
+}
+
+/* ---------- Cabeçalho ---------- */
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  font-family: "Young Serif", Georgia, "Times New Roman", serif;
+  font-size: 1.5rem;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 0.25rem 0;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  font-size: 0.9375rem;
+}
+.link-btn:hover { color: var(--ink); }
+
+/* ---------- Telas ---------- */
+.screen { display: none; padding-top: 2rem; }
+body[data-screen="start"] #start,
+body[data-screen="play"] #play,
+body[data-screen="guess"] #guess,
+body[data-screen="end"] #end { display: block; }
+
+.lead {
+  font-family: "Young Serif", Georgia, serif;
+  font-size: clamp(2rem, 7vw, 3rem);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  margin: 0 0 1rem;
+}
+.sub { color: var(--muted); margin: 0 0 1.5rem; max-width: 34rem; }
+.status { font-size: 0.9375rem; color: var(--muted); margin: 1rem 0 0; }
+.status.error { color: var(--rust); }
+
+.counter { color: var(--muted); font-size: 0.9375rem; margin: 0 0 0.5rem; }
+.question {
+  font-family: "Young Serif", Georgia, serif;
+  font-size: clamp(1.6rem, 5.5vw, 2.25rem);
+  line-height: 1.2;
+  margin: 0 0 1.75rem;
+  min-height: 2.4em;
+}
+
+/* ---------- Botões ---------- */
+.answers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.625rem; }
+.btn {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  padding: 0.85rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.08s ease;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-yes { background: var(--leaf); color: var(--leaf-ink); }
+.btn-no { background: var(--rust); color: var(--rust-ink); }
+.btn-unsure { background: transparent; border-color: var(--line); color: var(--ink); }
+.btn-main { background: var(--pollen); color: var(--pollen-ink); padding-inline: 1.75rem; }
+.btn-ghost { background: transparent; border-color: var(--line); }
+.row { display: flex; flex-wrap: wrap; gap: 0.625rem; align-items: center; }
+.tools { margin-top: 1rem; display: flex; gap: 1.25rem; }
+
+/* ---------- Favo de candidatas ---------- */
+.comb-block { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+.comb-caption { font-size: 0.9375rem; color: var(--muted); margin: 0 0 0.75rem; }
+.comb-caption strong { color: var(--ink); font-weight: 600; }
+#comb { width: 100%; display: block; }
+#comb .hex { cursor: pointer; transition: opacity 0.35s ease, fill 0.35s ease; stroke: var(--bg); stroke-width: 2; }
+#comb .hex.out { fill: var(--cell); opacity: 0.45; }
+#comb .hex.in { fill: var(--leaf); }
+#comb .hex.top { fill: var(--pollen); opacity: 1; }
+#comb .hex.picked { stroke: var(--ink); stroke-width: 2.5; }
+.cell-info { min-height: 1.5em; font-size: 0.9375rem; margin: 0.5rem 0 0; }
+.cell-info em { font-style: italic; }
+
+details.top-list { margin-top: 1rem; }
+details.top-list summary { cursor: pointer; color: var(--muted); font-size: 0.9375rem; }
+.bars { list-style: none; padding: 0; margin: 0.75rem 0 0; }
+.bars li { display: grid; grid-template-columns: 1fr 3.5rem; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem; font-size: 0.9375rem; }
+.bar-track { grid-column: 1 / -1; height: 6px; background: var(--cell); border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--leaf); }
+.bars .pct { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ---------- Palpite ---------- */
+.guess-intro { color: var(--muted); margin: 0 0 0.25rem; }
+.guess-name {
+  font-family: "Young Serif", Georgia, serif;
+  font-size: clamp(2.2rem, 8vw, 3.25rem);
+  line-height: 1.05;
+  font-style: italic;
+  margin: 0 0 0.25rem;
+  overflow-wrap: anywhere;
+}
+.guess-pop { font-size: 1.125rem; margin: 0 0 1.25rem; color: var(--muted); }
+.guess-img {
+  display: block;
+  max-width: 100%;
+  max-height: 18rem;
+  border-radius: 6px;
+  margin: 0 0 1.25rem;
+  object-fit: cover;
+}
+.guess-info { margin: 0 0 1.5rem; max-width: 34rem; }
+
+/* ---------- Final ---------- */
+.summary { margin-top: 2rem; }
+.summary h3, .check h3 { font-size: 1rem; margin: 0 0 0.5rem; }
+.qa { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+.qa li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.55rem 0; border-bottom: 1px solid var(--line); font-size: 0.9375rem; }
+.qa .ans { font-weight: 600; white-space: nowrap; }
+.qa .ans.sim { color: var(--leaf); }
+.qa .ans.nao { color: var(--rust); }
+.qa .ans.ns { color: var(--muted); font-weight: 500; }
+.qa li.conflict { background: color-mix(in srgb, var(--rust) 10%, transparent); padding-inline: 0.5rem; }
+.check { margin-top: 2rem; }
+/* ---------- iNaturalist ---------- */
+.inat { margin: 0 0 1.75rem; max-width: 34rem; }
+.inat-status { font-size: 0.9375rem; color: var(--muted); margin: 0; }
+.inat-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 0.75rem; }
+.inat-gallery button { padding: 0; border: 0; background: var(--cell); border-radius: 6px; overflow: hidden; cursor: zoom-in; }
+.inat-gallery button:first-child { grid-column: 1 / -1; }
+.inat-gallery img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.inat-gallery button:first-child img { aspect-ratio: 3 / 2; }
+.inat-head { margin: 0 0 0.35rem; font-size: 0.9375rem; }
+.inat-head em { font-style: italic; }
+.inat-note { margin: 0 0 0.5rem; font-size: 0.875rem; color: var(--rust); }
+.inat-summary { margin: 0 0 0.6rem; font-size: 0.9375rem; }
+.inat-links { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0 0 0.5rem; font-size: 0.9375rem; }
+.inat-links a { color: var(--leaf); font-weight: 600; text-underline-offset: 3px; }
+.inat-credit { font-size: 0.75rem; color: var(--muted); margin: 0; }
+.others { margin-top: 2rem; }
+.others h3 { font-size: 1rem; margin: 0 0 0.25rem; }
+.check select { width: 100%; padding: 0.6rem; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); }
+.check-result { margin-top: 0.75rem; font-size: 0.9375rem; }
+
+/* ---------- Diálogo da planilha ---------- */
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 1.5rem;
+  width: min(34rem, calc(100vw - 2rem));
+}
+dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+dialog h2 { font-family: "Young Serif", Georgia, serif; font-weight: 400; margin: 0 0 0.75rem; font-size: 1.4rem; }
+dialog label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+dialog input {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+}
+dialog ol { padding-left: 1.2rem; margin: 1rem 0; font-size: 0.9375rem; color: var(--muted); }
+dialog ol li { margin-bottom: 0.35rem; }
+dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
+
+@media (max-width: 420px) {
+  .answers { grid-template-columns: 1fr 1fr; }
+  .answers .btn-unsure { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body data-screen="start">
+<div class="wrap">
+
+  <header>
+    <h1 class="brand">Abelhinator</h1>
+    <button class="link-btn" id="btnSettings" type="button">Conectar planilha</button>
+  </header>
+
+  <!-- INÍCIO -->
+  <section class="screen" id="start" aria-live="polite">
+    <p class="lead">Qual é essa abelha?</p>
+    <p class="sub" id="startSub">Responda o que você consegue observar. Quando não der para ver ou não tiver certeza, use “Não sei”.</p>
+    <div class="row">
+      <button class="btn btn-main" id="btnStart" type="button" disabled>Começar identificação</button>
+      <button class="btn btn-ghost" id="btnReload" type="button">Atualizar planilha</button>
+    </div>
+    <p class="status" id="status">Carregando…</p>
+    <p class="status" id="diag" hidden><a id="diagLink" target="_blank" rel="noopener">Abrir os dados da planilha para testar</a>. Se abrir ou baixar um arquivo com as espécies, a planilha está acessível.</p>
+  </section>
+
+  <!-- PERGUNTAS -->
+  <section class="screen" id="play">
+    <p class="counter" id="counter">Pergunta 1</p>
+    <h2 class="question" id="question" aria-live="polite"></h2>
+    <div class="answers">
+      <button class="btn btn-yes" data-answer="sim" type="button">Sim</button>
+      <button class="btn btn-no" data-answer="nao" type="button">Não</button>
+      <button class="btn btn-unsure" data-answer="ns" type="button">Não sei</button>
+    </div>
+    <div class="tools">
+      <button class="link-btn" data-action="undo" type="button">Voltar uma pergunta</button>
+      <button class="link-btn" data-action="restart" type="button">Recomeçar</button>
+    </div>
+
+    <div class="comb-block">
+      <p class="comb-caption" id="combCaption"></p>
+      <svg id="comb" role="img" aria-label="Favo com as espécies da planilha"></svg>
+      <p class="cell-info" id="cellInfo">Toque em um alvéolo para ver a espécie.</p>
+      <details class="top-list" open>
+        <summary>Espécies mais prováveis</summary>
+        <ul class="bars" id="bars"></ul>
+      </details>
+    </div>
+  </section>
+
+  <!-- PALPITE -->
+  <section class="screen" id="guess" aria-live="polite">
+    <p class="guess-intro">Espécie mais provável</p>
+    <p class="guess-name" id="guessName"></p>
+    <p class="guess-pop" id="guessPop"></p>
+    <img class="guess-img" id="guessImg" alt="" hidden>
+    <p class="guess-info" id="guessInfo" hidden></p>
+    <div class="inat" id="guessInat" hidden></div>
+    <div class="row">
+      <button class="btn btn-yes" id="btnRight" type="button">Confirmar esta espécie</button>
+      <button class="btn btn-no" id="btnWrong" type="button">Não é essa, continuar</button>
+    </div>
+    <div class="others" id="guessOthersBlock" hidden>
+      <h3>Outras possibilidades</h3>
+      <ul class="bars" id="guessOthers"></ul>
+    </div>
+    <div class="tools">
+      <button class="link-btn" data-action="undo" type="button">Voltar uma pergunta</button>
+      <button class="link-btn" data-action="restart" type="button">Recomeçar</button>
+    </div>
+  </section>
+
+  <!-- FIM -->
+  <section class="screen" id="end" aria-live="polite">
+    <p class="lead" id="endTitle"></p>
+    <p class="sub" id="endSub"></p>
+    <div class="inat" id="endInat" hidden></div>
+    <div class="row">
+      <button class="btn btn-main" data-action="restart" type="button">Nova identificação</button>
+    </div>
+
+    <div class="others" id="endOthersBlock" hidden>
+      <h3>Espécies que ainda são possíveis</h3>
+      <ul class="bars" id="endOthers"></ul>
+    </div>
+
+    <div class="check" id="checkBlock">
+      <h3 id="checkTitle">Já sabe qual é? Compare com a planilha</h3>
+      <select id="checkSelect"></select>
+      <div class="check-result" id="checkResult"></div>
+    </div>
+
+    <div class="summary">
+      <h3>Suas respostas</h3>
+      <ul class="qa" id="qaList"></ul>
+    </div>
+  </section>
+</div>
+
+<!-- CONFIGURAÇÃO DA PLANILHA -->
+<dialog id="dlg">
+  <form method="dialog" id="dlgForm">
+    <h2>Conectar planilha</h2>
+    <label for="sheetInput">Link da planilha do Google</label>
+    <input id="sheetInput" type="url" placeholder="https://docs.google.com/spreadsheets/d/…" autocomplete="off">
+    <ol>
+      <li>No Google Planilhas, clique em Compartilhar e escolha “Qualquer pessoa com o link: Leitor”.</li>
+      <li>Abra a aba que tem as espécies e copie o link da barra do navegador (ele guarda qual aba é).</li>
+      <li>Primeira coluna: nome da espécie. Demais colunas: uma pergunta por coluna, com Sim ou Não em cada célula.</li>
+    </ol>
+    <div class="row">
+      <button class="btn btn-ghost" value="demo" type="submit">Usar exemplo</button>
+      <button class="btn btn-ghost" value="cancel" type="submit">Cancelar</button>
+      <button class="btn btn-main" value="save" type="submit">Conectar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+/* =========================================================
+   CONFIGURAÇÃO
+   Cole aqui o link da sua planilha para que ela já abra
+   conectada em qualquer computador. O link também pode ser
+   passado na URL: abelhinator.html?planilha=LINK
+   ou salvo pelo botão "Conectar planilha" (fica guardado
+   no navegador).
+   ========================================================= */
+const PLANILHA_PADRAO = "https://docs.google.com/spreadsheets/d/1WzP-shndRXwjUB5cn3pZZRvQIuAjHPqdCuIy7tKKmU8/edit?gid=0#gid=0";
+
+/* Ajustes do "cérebro" */
+const PESO_CONFERE   = 0.96; // resposta bate com a planilha
+const PESO_CONTRARIA = 0.03; // resposta contradiz a planilha (tolera erro)
+const PESO_VAZIO     = 0.5;  // célula vazia na planilha
+const CERTEZA_PALPITE = 0.85; // probabilidade para arriscar um palpite
+const MAX_PALPITES    = 4;    // sugestões recusadas antes de encerrar
+const LS_KEY = "abelhinator.planilha";
+const USAR_INATURALIST = true; // mostra fotos e informações do iNaturalist no resultado
+const INAT_LUGAR = 6878;       // id do Brasil no iNaturalist (link de observações)
+
+/* Dados de exemplo (gêneros conhecidos, só para testar a página antes de conectar a planilha).
+   Células vazias = característica variável ou desconhecida. */
+const DEMO_CSV = `Espécie,Nome popular,É social?,Tem ferrão funcional?,Faz ninho em cavidades que já existem (ocos)?,Escava ninho em madeira?,Produz mel que é colhido pelo ser humano?,É nativa do Brasil?,Tem cor metálica?,Os machos coletam fragrâncias de flores?,Coleta óleo floral?,Mede mais de 1,5 cm?,Mede menos de 6 mm?
+Apis mellifera,Abelha-europeia/africanizada,Sim,Sim,Sim,Não,Sim,Não,Não,Não,Não,Não,Não
+Tetragonisca angustula,Jataí,Sim,Não,Sim,Não,Sim,Sim,Não,Não,Não,Não,Sim
+Melipona quadrifasciata,Mandaçaia,Sim,Não,Sim,Não,Sim,Sim,Não,Não,Não,Não,Não
+Bombus sp.,Mamangava-de-chão,Sim,Sim,,Não,Não,Sim,Não,Não,Não,Sim,Não
+Xylocopa sp.,Mamangava-de-toco,Não,Sim,Não,Sim,Não,Sim,Não,Não,Não,Sim,Não
+Euglossa sp.,Abelha-das-orquídeas,Não,Sim,Sim,Não,Não,Sim,Sim,Sim,Não,Não,Não
+Augochlora sp.,Abelha-verde,Não,Sim,Não,Sim,Não,Sim,Sim,Não,Não,Não,Não
+Centris sp.,Abelha-coletora-de-óleo,Não,Sim,,Não,Não,Sim,Não,Não,Sim,,Não`
+  // a vírgula de "1,5 cm" quebraria o CSV; corrigimos abaixo
+  .replace("Mede mais de 1,5 cm?", "\"Mede mais de 1,5 cm?\"");
+
+/* =========================================================
+   LEITURA DA PLANILHA
+   ========================================================= */
+const META = {
+  nome: /^(especie|especies|nome cientifico|nome|taxon|taxa)$/,
+  popular: /^(nome popular|nome comum|nomes populares|popular)/,
+  imagem: /^(imagem|foto|image|url da imagem|link da foto|link da imagem)/,
+  info: /^(descricao|observacao|observacoes|info|informacoes|curiosidade|notas?)$/
+};
+
+function norm(s) {
+  return String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+function parseValue(v) {
+  const n = norm(v);
+  if (["sim", "s", "yes", "y", "x", "1", "true", "verdadeiro", "v"].includes(n)) return 1;
+  if (["nao", "n", "no", "0", "false", "falso", "f"].includes(n)) return 0;
+  return null; // vazio, "?", "variável", etc. = desconhecido
+}
+
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else quoted = false;
+      } else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (c !== "\r") field += c;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function asQuestion(h) {
+  const t = h.trim().replace(/\s+/g, " ");
+  return /[?？]$/.test(t) ? t : t + "?";
+}
+
+function buildDataset(rows) {
+  rows = rows.filter(r => r.some(c => String(c).trim() !== ""));
+  if (rows.length < 2) throw new Error("A planilha precisa de uma linha de cabeçalho e pelo menos uma espécie.");
+
+  const head = rows[0].map(h => String(h).trim());
+  const nh = head.map(norm);
+
+  const nameLike = nh.map((h, i) => META.nome.test(h) ? i : -1).filter(i => i >= 0);
+  const nameCol = nameLike.length ? nameLike[0] : 0;
+  const popCol = nh.findIndex((h, i) => i !== nameCol && META.popular.test(h));
+  const imgCol = nh.findIndex((h, i) => i !== nameCol && META.imagem.test(h));
+  const infoCol = nh.findIndex((h, i) => i !== nameCol && META.info.test(h));
+  const metaCols = new Set([nameCol, popCol, imgCol, infoCol, ...nameLike]);
+
+  let questions = [];
+  head.forEach((h, i) => {
+    if (metaCols.has(i)) return;
+    if (!h || h.startsWith("#") || h.startsWith("_")) return; // colunas de anotação
+    questions.push({ col: i, text: asQuestion(h) });
+  });
+
+  let species = rows.slice(1)
+    .filter(r => String(r[nameCol] ?? "").trim())
+    .map(r => ({
+      name: String(r[nameCol]).trim(),
+      popular: popCol >= 0 ? String(r[popCol] ?? "").trim() : "",
+      img: imgCol >= 0 ? String(r[imgCol] ?? "").trim() : "",
+      info: infoCol >= 0 ? String(r[infoCol] ?? "").trim() : "",
+      raw: questions.map(q => parseValue(r[q.col]))
+    }));
+
+  if (!species.length) throw new Error("Não encontrei nenhuma espécie na primeira coluna.");
+
+  // Só vale perguntar o que separa espécies (tem pelo menos um Sim e um Não)
+  const useful = questions.map((q, qi) => {
+    const vals = species.map(s => s.raw[qi]);
+    return vals.includes(1) && vals.includes(0);
+  });
+  const ignored = questions.length - useful.filter(Boolean).length;
+  const keepIdx = questions.map((_, i) => i).filter(i => useful[i]);
+  questions = keepIdx.map(i => questions[i]);
+  species.forEach(s => { s.v = keepIdx.map(i => s.raw[i]); delete s.raw; });
+
+  if (!questions.length) throw new Error("Nenhuma coluna tem respostas Sim e Não suficientes para fazer perguntas.");
+  return { species, questions, ignored };
+}
+
+function buildCsvUrl(link) {
+  link = String(link).trim();
+  if (!link) return null;
+  const bust = "_=" + Date.now();
+  // Link de "Publicar na Web" (formato CSV)
+  if (/\/spreadsheets\/d\/e\//.test(link) || /[?&]output=csv/.test(link)) {
+    let url = link.replace(/output=[a-z]+/, "output=csv");
+    if (!/output=csv/.test(url)) url += (url.includes("?") ? "&" : "?") + "output=csv";
+    return url + "&" + bust;
+  }
+  // Link normal de compartilhamento ou só o ID
+  const m = link.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) || link.match(/^([a-zA-Z0-9-_]{25,})$/);
+  if (!m) return null;
+  const gid = (link.match(/[#&?]gid=(\d+)/) || [])[1];
+  return `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv&headers=1` +
+         (gid ? `&gid=${gid}` : "") + "&" + bust;
+}
+
+function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function safeSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} }
+
+/* =========================================================
+   ESTADO
+   ========================================================= */
+let D = null;   // dados: {species, questions, ignored, source}
+let S = null;   // partida atual
+const $ = id => document.getElementById(id);
+
+function setScreen(name) { document.body.dataset.screen = name; window.scrollTo(0, 0); }
+
+function setStatus(text, isError = false) {
+  const el = $("status");
+  el.textContent = text;
+  el.classList.toggle("error", isError);
+}
+
+async function loadData() {
+  $("btnStart").disabled = true;
+  $("diag").hidden = true;
+  const fromUrl = new URLSearchParams(location.search).get("planilha");
+  const link = fromUrl || safeGet(LS_KEY) || PLANILHA_PADRAO;
+
+  if (!link) { useDemo("Nenhuma planilha conectada. Usando dados de exemplo."); return; }
+
+  const url = buildCsvUrl(link);
+  if (!url) { D = null; setStatus("Esse link não parece ser de uma planilha do Google. Use “Conectar planilha”.", true); return; }
+
+  setStatus("Lendo a planilha…");
+  let rows = null, lastError = null;
+
+  // 1ª tentativa: CSV direto
+  try {
+    rows = await readViaFetch(url);
+  } catch (e) { lastError = e; }
+
+  // 2ª tentativa: JSONP (funciona mesmo quando o navegador bloqueia o CSV)
+  if (!rows) {
+    const jUrl = buildJsonpUrl(link);
+    if (jUrl) {
+      try {
+        rows = gvizToRows(await loadJsonp(jUrl));
+        lastError = null;
+      } catch (e) { lastError = e.userFacing ? e : lastError || e; }
+    }
+  }
+
+  if (rows) {
+    try {
+      D = buildDataset(rows);
+      D.source = "planilha";
+      showReady();
+    } catch (e) {
+      D = null;
+      setStatus(e.message, true);
+    }
+    return;
+  }
+
+  D = null;
+  const e = lastError || new Error("");
+  const netError = !e.userFacing &&
+    ((e.name === "TypeError") || /fetch|network|load failed|timeout/i.test(String(e.message)));
+  setStatus(netError
+    ? "Não consegui acessar a planilha. Se esta página está aberta dentro do Claude ou de outro app, baixe o arquivo e abra direto no navegador. Se já estiver no navegador, use o link de teste para ver se os dados aparecem."
+    : (e.message || "Não consegui ler a planilha."), true);
+  const a = $("diagLink");
+  a.href = url.replace(/&_=\d+$/, "");
+  $("diag").hidden = false;
+}
+
+async function readViaFetch(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw userError(`A planilha respondeu com erro ${res.status}. Confira o link e a aba.`);
+  const text = await res.text();
+  if (/^\s*<(!doctype|html)/i.test(text)) {
+    throw userError("A planilha não está aberta para leitura. Compartilhe como “Qualquer pessoa com o link: Leitor”.");
+  }
+  return parseCSV(text);
+}
+
+function userError(msg) { const e = new Error(msg); e.userFacing = true; return e; }
+
+function buildJsonpUrl(link) {
+  if (/\/spreadsheets\/d\/e\//.test(link)) return null; // link "publicar na web" não tem JSONP
+  const m = link.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) || link.match(/^([a-zA-Z0-9-_]{25,})$/);
+  if (!m) return null;
+  const gid = (link.match(/[#&?]gid=(\d+)/) || [])[1];
+  return `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?headers=1` +
+         (gid ? `&gid=${gid}` : "") + "&tqx=responseHandler:__CB__&_=" + Date.now();
+}
+
+function loadJsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = "abelhinatorCb" + Date.now() + Math.floor(Math.random() * 1000);
+    const script = document.createElement("script");
+    const timer = setTimeout(() => { cleanup(); reject(new Error("timeout")); }, 15000);
+    function cleanup() { clearTimeout(timer); try { delete window[cb]; } catch { window[cb] = undefined; } script.remove(); }
+    window[cb] = data => { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new TypeError("jsonp load failed")); };
+    script.src = url.replace("__CB__", cb);
+    document.head.append(script);
+  });
+}
+
+function gvizToRows(data) {
+  if (!data || data.status === "error") {
+    const reason = data && data.errors && data.errors[0] && (data.errors[0].reason || "");
+    if (/access|denied|permission/i.test(reason || "")) {
+      throw userError("A planilha não está aberta para leitura. Compartilhe como “Qualquer pessoa com o link: Leitor”.");
+    }
+    throw userError("O Google Planilhas devolveu um erro ao ler a aba. Confira se o link é da aba certa.");
+  }
+  const t = data.table;
+  const cell = c => c == null ? "" : (c.f != null ? String(c.f) : (c.v == null ? "" : String(c.v)));
+  const head = t.cols.map(c => c.label || "");
+  const body = (t.rows || []).map(r => (r.c || []).map(cell));
+  return [head, ...body];
+}
+
+function useDemo(msg) {
+  D = buildDataset(parseCSV(DEMO_CSV));
+  D.source = "exemplo";
+  showReady(msg);
+}
+
+function showReady(prefix) {
+  const n = D.species.length, q = D.questions.length;
+  $("startSub").textContent =
+    `Responda o que você consegue observar. Quando não der para ver ou não tiver certeza, use “Não sei”. ` +
+    `A comparação é feita com ${n} espécies da ${D.source === "exemplo" ? "lista de exemplo" : "planilha"}.`;
+  let s = prefix ? prefix + " " : (D.source === "planilha" ? "Planilha conectada. " : "");
+  s += `${n} espécies, ${q} perguntas.`;
+  if (D.ignored) s += ` ${D.ignored} coluna(s) sem Sim e Não suficientes foram deixadas de fora.`;
+  setStatus(s);
+  $("btnStart").disabled = false;
+}
+
+/* =========================================================
+   MOTOR DE PERGUNTAS
+   ========================================================= */
+function newGame() {
+  const n = D.species.length;
+  S = {
+    w: new Array(n).fill(1 / n),
+    rejected: new Set(),
+    asked: new Set(),
+    history: [],     // {q, a}
+    stack: [],       // snapshots para "voltar"
+    current: null,
+    guessing: null,
+    wrongGuesses: 0,
+    picked: null
+  };
+  next();
+}
+
+function snapshot() {
+  return {
+    w: S.w.slice(), rejected: [...S.rejected], asked: [...S.asked],
+    historyLen: S.history.length, current: S.current, guessing: S.guessing,
+    wrongGuesses: S.wrongGuesses, screen: document.body.dataset.screen
+  };
+}
+
+function restore(sn) {
+  S.w = sn.w; S.rejected = new Set(sn.rejected); S.asked = new Set(sn.asked);
+  S.history.length = sn.historyLen; S.current = sn.current; S.guessing = sn.guessing;
+  S.wrongGuesses = sn.wrongGuesses;
+  if (sn.screen === "guess") renderGuess(); else renderPlay();
+}
+
+function probs() {
+  const p = S.w.map((w, i) => S.rejected.has(i) ? 0 : w);
+  const t = p.reduce((a, b) => a + b, 0);
+  return t > 0 ? p.map(x => x / t) : p;
+}
+
+function activeSet(P) {
+  const max = Math.max(...P);
+  if (max <= 0) return [];
+  return P.map((p, i) => i).filter(i => P[i] > 0 && P[i] >= max * 0.15);
+}
+
+function pickQuestion(active, P) {
+  let best = [], bestScore = 0;
+  D.questions.forEach((_, qi) => {
+    if (S.asked.has(qi)) return;
+    let y = 0, n = 0, u = 0;
+    for (const i of active) {
+      const v = D.species[i].v[qi];
+      if (v === 1) y += P[i]; else if (v === 0) n += P[i]; else u += P[i];
+    }
+    if (y <= 0 || n <= 0) return;
+    const py = y / (y + n);
+    const H = -(py * Math.log2(py) + (1 - py) * Math.log2(1 - py));
+    const score = H * ((y + n) / (y + n + u));
+    if (score > bestScore + 0.03) { best = [qi]; bestScore = score; }
+    else if (Math.abs(score - bestScore) <= 0.03) best.push(qi);
+  });
+  if (!best.length) return null;
+  return best[Math.floor(Math.random() * best.length)]; // varia entre empates
+}
+
+function next() {
+  const P = probs();
+  const alive = P.map((p, i) => i).filter(i => P[i] > 0).sort((a, b) => P[b] - P[a]);
+  if (!alive.length || S.wrongGuesses >= MAX_PALPITES) return finish(false);
+
+  const active = activeSet(P);
+  const top = alive[0];
+  const q = pickQuestion(active, P);
+
+  if (active.length === 1 || P[top] >= CERTEZA_PALPITE || q === null) {
+    S.guessing = top;
+    S.current = null;
+    return renderGuess();
+  }
+  S.current = q;
+  S.guessing = null;
+  renderPlay();
+}
+
+function answer(a) {
+  if (S.current === null) return;
+  const qi = S.current;
+  S.stack.push(snapshot());
+  S.asked.add(qi);
+  S.history.push({ q: qi, a });
+  if (a !== "ns") {
+    const want = a === "sim" ? 1 : 0;
+    D.species.forEach((s, i) => {
+      const v = s.v[qi];
+      S.w[i] *= v === null ? PESO_VAZIO : (v === want ? PESO_CONFERE : PESO_CONTRARIA);
+    });
+    const t = S.w.reduce((x, y) => x + y, 0);
+    if (t > 0) S.w = S.w.map(x => x / t);
+  }
+  next();
+}
+
+function wrongGuess() {
+  S.stack.push(snapshot());
+  S.rejected.add(S.guessing);
+  S.wrongGuesses++;
+  next();
+}
+
+function undo() {
+  const sn = S && S.stack.pop();
+  if (sn) restore(sn);
+}
+
+/* =========================================================
+   TELAS
+   ========================================================= */
+function renderPlay() {
+  setScreen("play");
+  $("counter").textContent = `Pergunta ${S.history.length + 1}`;
+  $("question").textContent = D.questions[S.current].text;
+  document.querySelectorAll('[data-action="undo"]').forEach(b => b.disabled = !S.stack.length);
+  renderComb();
+}
+
+function renderGuess() {
+  setScreen("guess");
+  const s = D.species[S.guessing];
+  $("guessName").textContent = s.name;
+  $("guessPop").textContent = s.popular;
+  $("guessPop").hidden = !s.popular;
+  const img = $("guessImg");
+  if (s.img && /^https?:\/\//.test(s.img)) {
+    img.src = toDirectImage(s.img);
+    img.alt = `Foto de ${s.name}`;
+    img.hidden = false;
+    img.onerror = () => { img.hidden = true; };
+  } else img.hidden = true;
+  $("guessInfo").textContent = s.info;
+  $("guessInfo").hidden = !s.info;
+  document.querySelectorAll('[data-action="undo"]').forEach(b => b.disabled = !S.stack.length);
+  const P = probs();
+  const others = rankedOthers(P, S.guessing, 3);
+  $("guessOthersBlock").hidden = !others.length;
+  fillBars($("guessOthers"), others, P);
+  renderInat($("guessInat"), s);
+}
+
+function rankedOthers(P, exclude, limit) {
+  return P.map((p, i) => i).filter(i => i !== exclude && P[i] >= 0.01)
+          .sort((a, b) => P[b] - P[a]).slice(0, limit);
+}
+
+/* =========================================================
+   iNATURALIST
+   ========================================================= */
+const INAT_CACHE = new Map();
+const RANK_PT = { species: "espécie", genus: "gênero", subgenus: "subgênero", tribe: "tribo",
+  subtribe: "subtribo", family: "família", subfamily: "subfamília", subspecies: "subespécie",
+  complex: "complexo de espécies", order: "ordem" };
+
+/* "Friesella schrottkyi (Friese, 1900)" -> "Friesella schrottkyi"; "Bombus sp." -> "Bombus" */
+function inatQueryName(name) {
+  const n = String(name).replace(/\(.*?\)/g, " ").replace(/\b(cf|aff)\.\s*/gi, "")
+    .replace(/\s+/g, " ").trim();
+  const parts = n.split(" ");
+  if (parts.length >= 2 && /^spp?\.?\d*$/i.test(parts[1])) return parts[0];
+  if (parts.length >= 2 && /^[a-z][a-z-]+$/.test(parts[1])) return parts[0] + " " + parts[1];
+  return parts[0];
+}
+
+function fetchInat(name) {
+  const q = inatQueryName(name);
+  if (INAT_CACHE.has(q)) return INAT_CACHE.get(q);
+  const job = (async () => {
+    const r = await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(q)}&is_active=true&per_page=10&locale=pt-BR`);
+    if (!r.ok) throw new Error("iNaturalist " + r.status);
+    const list = (await r.json()).results || [];
+    const exact = list.find(t => String(t.name).toLowerCase() === q.toLowerCase());
+    const pick = exact || list.find(t => t.iconic_taxon_name === "Insecta") || null;
+    if (!pick) return null;
+    let full = pick;
+    try {
+      const r2 = await fetch(`https://api.inaturalist.org/v1/taxa/${pick.id}?locale=pt-BR`);
+      if (r2.ok) full = ((await r2.json()).results || [])[0] || pick;
+    } catch {}
+    return { ...full, exact: !!exact, query: q };
+  })();
+  INAT_CACHE.set(q, job);
+  job.catch(() => INAT_CACHE.delete(q));
+  return job;
+}
+
+function stripHtml(html) {
+  const d = document.createElement("div");
+  d.innerHTML = String(html || "");
+  return (d.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+async function renderInat(box, species) {
+  if (!USAR_INATURALIST) { box.hidden = true; return; }
+  const token = {};
+  box._token = token;
+  box.hidden = false;
+  box.replaceChildren(el("p", "inat-status", "Buscando no iNaturalist…"));
+
+  let t;
+  try { t = await fetchInat(species.name); }
+  catch {
+    if (box._token !== token) return;
+    box.replaceChildren(el("p", "inat-status", "Não foi possível consultar o iNaturalist agora."));
+    return;
+  }
+  if (box._token !== token) return;
+  if (!t) {
+    box.replaceChildren(el("p", "inat-status", `“${species.name}” não foi encontrada no iNaturalist. Confira a grafia na planilha.`));
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+
+  // Fotos
+  let photos = (t.taxon_photos || []).map(tp => tp.photo).filter(Boolean);
+  if (!photos.length && t.default_photo) photos = [t.default_photo];
+  photos = photos.slice(0, 4);
+  if (photos.length) {
+    const gal = el("div", "inat-gallery");
+    photos.forEach((ph, k) => {
+      const big = ph.large_url || ph.original_url || (ph.url || "").replace("square", "large");
+      const src = k === 0 ? (ph.medium_url || big) : (ph.medium_url || ph.small_url || ph.url);
+      const b = el("button");
+      b.type = "button";
+      b.title = "Abrir foto maior";
+      b.addEventListener("click", () => window.open(big || src, "_blank", "noopener"));
+      const img = el("img");
+      img.src = src;
+      img.alt = `Foto de ${t.name} no iNaturalist`;
+      img.loading = "lazy";
+      b.append(img);
+      gal.append(b);
+    });
+    frag.append(gal);
+  }
+
+  // Nome e categoria
+  const head = el("p", "inat-head");
+  head.append(document.createTextNode("No iNaturalist: "));
+  head.append(el("em", null, t.name));
+  const extra = [RANK_PT[t.rank] || t.rank, t.preferred_common_name].filter(Boolean).join(", ");
+  if (extra) head.append(document.createTextNode(` (${extra})`));
+  frag.append(head);
+
+  if (!t.exact) {
+    frag.append(el("p", "inat-note", `A busca por “${t.query}” não teve correspondência exata; mostrando o resultado mais próximo.`));
+  }
+
+  // Resumo da Wikipédia
+  const summary = stripHtml(t.wikipedia_summary);
+  if (summary) {
+    frag.append(el("p", "inat-summary", summary.length > 420 ? summary.slice(0, 420).replace(/\s\S*$/, "") + "…" : summary));
+  }
+
+  // Links
+  const links = el("p", "inat-links");
+  const a1 = el("a", null, "Ver no iNaturalist");
+  a1.href = `https://www.inaturalist.org/taxa/${t.id}`;
+  const a2 = el("a", null, "Observações no Brasil");
+  a2.href = `https://www.inaturalist.org/observations?taxon_id=${t.id}&place_id=${INAT_LUGAR}`;
+  [a1, a2].forEach(a => { a.target = "_blank"; a.rel = "noopener"; links.append(a); });
+  if (t.observations_count) links.append(el("span", "inat-status", `${t.observations_count.toLocaleString("pt-BR")} observações no mundo`));
+  frag.append(links);
+
+  // Créditos das fotos (exigidos pelas licenças)
+  if (photos.length) {
+    const credits = [...new Set(photos.map(ph => ph.attribution).filter(Boolean))];
+    if (credits.length) frag.append(el("p", "inat-credit", "Fotos: " + credits.join("; ")));
+  }
+
+  box.replaceChildren(frag);
+}
+
+/* Converte link de imagem do Google Drive em link direto */
+function toDirectImage(url) {
+  const m = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?.*id=)([a-zA-Z0-9-_]+)/);
+  return m ? `https://drive.google.com/thumbnail?id=${m[1]}&sz=w1000` : url;
+}
+
+function finish(won) {
+  setScreen("end");
+  const hist = S.history;
+  if (won) {
+    const s = D.species[S.guessing];
+    $("endTitle").textContent = s.name;
+    $("endTitle").style.fontStyle = "italic";
+    $("endSub").textContent = `${s.popular ? s.popular + ". " : ""}Identificada com base em ${hist.length} resposta${hist.length === 1 ? "" : "s"}.`;
+    $("checkBlock").hidden = true;
+    $("endOthersBlock").hidden = true;
+    renderInat($("endInat"), s);
+    renderQA(S.guessing);
+  } else {
+    $("endTitle").textContent = "Não foi possível chegar a uma espécie.";
+    $("endTitle").style.fontStyle = "normal";
+    $("endSub").textContent = "As respostas não bastaram para separar as espécies da planilha, ou nenhuma delas bate com o que foi observado.";
+    $("checkBlock").hidden = false;
+    $("endInat").hidden = true;
+    $("endInat")._token = null;
+    const P = probs();
+    const rest = rankedOthers(P, null, 5);
+    $("endOthersBlock").hidden = !rest.length;
+    fillBars($("endOthers"), rest, P);
+    const sel = $("checkSelect");
+    sel.innerHTML = "";
+    const opt0 = new Option("Escolha a espécie…", "");
+    sel.add(opt0);
+    D.species
+      .map((s, i) => ({ s, i }))
+      .sort((a, b) => a.s.name.localeCompare(b.s.name, "pt-BR"))
+      .forEach(({ s, i }) => sel.add(new Option(s.popular ? `${s.name} (${s.popular})` : s.name, i)));
+    $("checkResult").textContent = "";
+    renderQA(null);
+  }
+}
+
+function renderQA(speciesIdx) {
+  const ul = $("qaList");
+  ul.innerHTML = "";
+  const labels = { sim: "Sim", nao: "Não", ns: "Não sei" };
+  let conflicts = 0;
+  S.history.forEach(({ q, a }) => {
+    const li = document.createElement("li");
+    const qt = document.createElement("span");
+    qt.textContent = D.questions[q].text;
+    const an = document.createElement("span");
+    an.className = "ans " + a;
+    an.textContent = labels[a];
+    if (speciesIdx !== null && a !== "ns") {
+      const v = D.species[speciesIdx].v[q];
+      if (v !== null && v !== (a === "sim" ? 1 : 0)) {
+        li.classList.add("conflict");
+        an.textContent += ` (planilha: ${v ? "Sim" : "Não"})`;
+        conflicts++;
+      } else if (v === null) {
+        an.textContent += " (vazio na planilha)";
+      }
+    }
+    li.append(qt, an);
+    ul.append(li);
+  });
+  if (!S.history.length) {
+    const li = document.createElement("li");
+    li.textContent = "Nenhuma pergunta respondida.";
+    ul.append(li);
+  }
+  return conflicts;
+}
+
+/* ---------- Favo ---------- */
+function renderComb() {
+  const svg = $("comb");
+  const P = probs();
+  const active = new Set(activeSet(P));
+  const max = Math.max(...P);
+  const top = P.indexOf(max);
+  const n = D.species.length;
+
+  $("combCaption").innerHTML = "";
+  const strong = document.createElement("strong");
+  strong.textContent = `${active.size} de ${n}`;
+  $("combCaption").append(strong, document.createTextNode(` espécies ainda possíveis`));
+
+  const W = svg.clientWidth || 600;
+  const R = n > 120 ? 9 : n > 50 ? 12 : 16;   // raio do hexágono
+  const hw = Math.sqrt(3) * R;                // largura
+  const cols = Math.max(1, Math.floor((W - hw / 2) / hw));
+  const rows = Math.ceil(n / cols);
+  const H = rows * 1.5 * R + R / 2 + 2;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("height", H);
+
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < n; i++) {
+    const r = Math.floor(i / cols), c = i % cols;
+    const cx = c * hw + hw / 2 + (r % 2 ? hw / 2 : 0);
+    const cy = r * 1.5 * R + R + 1;
+    const pts = [];
+    for (let k = 0; k < 6; k++) {
+      const ang = Math.PI / 180 * (60 * k - 90);
+      pts.push((cx + (R - 1) * Math.cos(ang)).toFixed(1) + "," + (cy + (R - 1) * Math.sin(ang)).toFixed(1));
+    }
+    const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    poly.setAttribute("points", pts.join(" "));
+    let cls = "hex " + (active.has(i) ? "in" : "out");
+    if (i === top && active.has(i) && active.size > 1) cls += " top";
+    if (i === S.picked) cls += " picked";
+    poly.setAttribute("class", cls);
+    if (active.has(i) && i !== top) poly.style.opacity = (0.4 + 0.6 * (P[i] / max)).toFixed(2);
+    poly.dataset.idx = i;
+    const t = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    t.textContent = D.species[i].name;
+    poly.append(t);
+    frag.append(poly);
+  }
+  svg.replaceChildren(frag);
+  renderBars(P);
+  if (S.picked !== null) showCell(S.picked, P, active);
+}
+
+function showCell(i, P, active) {
+  const s = D.species[i];
+  const box = $("cellInfo");
+  box.innerHTML = "";
+  const em = document.createElement("em");
+  em.textContent = s.name;
+  box.append(em, document.createTextNode(
+    (s.popular ? ` (${s.popular})` : "") +
+    (S.rejected.has(i) ? ": descartada por você." : active.has(i) ? `: ainda possível, ${(P[i] * 100).toFixed(0)}%.` : ": pouco provável agora.")
+  ));
+}
+
+function renderBars(P) {
+  const idx = P.map((p, i) => i).filter(i => P[i] > 0).sort((a, b) => P[b] - P[a]).slice(0, 5);
+  fillBars($("bars"), idx, P);
+}
+
+function fillBars(ul, idx, P) {
+  ul.innerHTML = "";
+  idx.forEach(i => {
+    const p = P[i];
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    const sp = D.species[i];
+    name.textContent = sp.popular ? `${sp.name} (${sp.popular})` : sp.name;
+    const pct = document.createElement("span");
+    pct.className = "pct";
+    pct.textContent = (p * 100).toFixed(0) + "%";
+    const track = document.createElement("div");
+    track.className = "bar-track";
+    const fill = document.createElement("div");
+    fill.className = "bar-fill";
+    fill.style.width = (p * 100).toFixed(1) + "%";
+    track.append(fill);
+    li.append(name, pct, track);
+    ul.append(li);
+  });
+}
+
+/* =========================================================
+   EVENTOS
+   ========================================================= */
+$("btnStart").addEventListener("click", () => D && newGame());
+$("btnReload").addEventListener("click", loadData);
+
+document.addEventListener("click", e => {
+  const ans = e.target.closest("[data-answer]");
+  if (ans) return answer(ans.dataset.answer);
+  const act = e.target.closest("[data-action]");
+  if (!act) return;
+  if (act.dataset.action === "undo") undo();
+  if (act.dataset.action === "restart") { S = null; setScreen("start"); loadData(); }
+});
+
+$("btnRight").addEventListener("click", () => finish(true));
+$("btnWrong").addEventListener("click", wrongGuess);
+
+$("comb").addEventListener("click", e => {
+  const poly = e.target.closest("polygon");
+  if (!poly) return;
+  S.picked = Number(poly.dataset.idx);
+  renderComb();
+});
+
+$("checkSelect").addEventListener("change", e => {
+  if (e.target.value === "") { renderQA(null); $("checkResult").textContent = ""; return; }
+  const i = Number(e.target.value);
+  const c = renderQA(i);
+  $("checkResult").textContent = c
+    ? `${c} resposta${c === 1 ? "" : "s"} contradiz${c === 1 ? "" : "em"} a planilha (destacadas abaixo).`
+    : "Nenhuma resposta contradiz a planilha. Talvez faltem colunas que diferenciem essa espécie das outras.";
+});
+
+/* Teclado: S = sim, N = não, ? ou D = não sei, Backspace = voltar */
+document.addEventListener("keydown", e => {
+  if (document.body.dataset.screen !== "play" || e.target.closest("input, select, dialog")) return;
+  const k = e.key.toLowerCase();
+  if (k === "s") answer("sim");
+  else if (k === "n") answer("nao");
+  else if (k === "?" || k === "d") answer("ns");
+  else if (k === "backspace") { e.preventDefault(); undo(); }
+});
+
+/* Diálogo da planilha */
+$("btnSettings").addEventListener("click", () => {
+  $("sheetInput").value = safeGet(LS_KEY) || PLANILHA_PADRAO || "";
+  $("dlg").showModal();
+});
+$("dlg").addEventListener("close", () => {
+  const v = $("dlg").returnValue;
+  if (v === "save") {
+    const link = $("sheetInput").value.trim();
+    if (link && !buildCsvUrl(link)) { setStatus("Esse link não parece ser de uma planilha do Google.", true); return; }
+    safeSet(LS_KEY, link);
+    S = null; setScreen("start"); loadData();
+  } else if (v === "demo") {
+    safeSet(LS_KEY, "");
+    S = null; setScreen("start"); useDemo("Usando dados de exemplo.");
+  }
+});
+
+let resizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (document.body.dataset.screen === "play") renderComb(); }, 150);
+});
+
+loadData();
+</script>
+</body>
+</html>
