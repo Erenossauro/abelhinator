@@ -131,10 +131,11 @@ body[data-screen="end"] #end { display: block; }
 }
 
 .q-guide { margin: -0.75rem 0 1.5rem; }
-.q-imgs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
-.q-imgs button { flex: 0 0 auto; padding: 0; border: 0; background: var(--cell); border-radius: 6px; overflow: hidden; cursor: zoom-in; }
-.q-imgs img { display: block; height: 11rem; max-width: min(100%, 22rem); object-fit: cover; }
-.q-imgs:has(button:only-child) img { max-width: 100%; }
+/* Cada imagem ocupa a largura toda dos botões de resposta; com várias, desliza para o lado */
+.q-imgs { display: grid; grid-auto-flow: column; grid-auto-columns: 100%; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 2px; }
+.q-imgs button { width: 100%; padding: 0; border: 0; background: var(--cell); border-radius: 8px; overflow: hidden; cursor: zoom-in; scroll-snap-align: start; }
+.q-imgs img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
+.q-imgs-hint { font-size: 0.8125rem; color: var(--muted); margin: 0.35rem 0 0; }
 .q-guide figcaption { font-size: 0.9375rem; color: var(--muted); margin-top: 0.5rem; max-width: 34rem; }
 .q-guide figcaption:empty { display: none; }
 
@@ -945,6 +946,13 @@ function renderGuide() {
     box.append(b);
   });
   box.hidden = !g.imgs.length;
+  const old = $("qImgsHint");
+  if (old) old.remove();
+  if (g.imgs.length > 1) {
+    const hint = el("p", "q-imgs-hint", `${g.imgs.length} imagens. Deslize para o lado para ver as outras.`);
+    hint.id = "qImgsHint";
+    box.after(hint);
+  }
   $("qText").textContent = g.text;
   fig.hidden = false;
 }
