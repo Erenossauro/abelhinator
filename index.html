@@ -201,6 +201,8 @@ details.top-list summary { cursor: pointer; color: var(--muted); font-size: 0.93
 }
 .guess-info { margin: 0 0 1.5rem; max-width: 34rem; }
 
+.guess-note { margin: 0 0 0.75rem; font-size: 0.9375rem; padding: 0.5rem 0.75rem; border-left: 3px solid var(--pollen); background: color-mix(in srgb, var(--pollen) 12%, transparent); max-width: 34rem; }
+
 /* ---------- Final ---------- */
 .summary { margin-top: 2rem; }
 .summary h3, .check h3 { font-size: 1rem; margin: 0 0 0.5rem; }
@@ -348,7 +350,8 @@ dialog .row { margin-top: 1.25rem; justify-content: flex-end; }
 
   <!-- PALPITE -->
   <section class="screen" id="guess" aria-live="polite">
-    <p class="guess-intro">Espécie mais provável</p>
+    <p class="guess-intro" id="guessIntro">Espécie mais provável</p>
+    <p class="guess-note" id="guessNote" hidden></p>
     <p class="guess-name" id="guessName"></p>
     <p class="guess-pop" id="guessPop"></p>
     <img class="guess-img" id="guessImg" alt="" hidden>
@@ -464,6 +467,7 @@ const LIMIAR_CANDIDATA = 0.005; // espécie continua candidata enquanto tiver pe
                                 // (com PESO_CONTRARIA = 0.08, isso tolera até 2 respostas que contradizem a planilha)
 const MAX_PALPITES    = 4;    // sugestões recusadas antes de encerrar
 const LS_KEY = "abelhinator.planilha";
+const RESPOSTA_EXCLUSIVA_DIRETA = true; // Sim numa característica que só uma espécie tem na planilha -> sugere essa espécie na hora
 const PARECIDAS_MAX = 3;          // quantas espécies parecidas mostrar no resultado
 const PARECIDAS_MIN_SEMELHANCA = 0.5; // só mostra as que têm pelo menos 50% das características iguais
 const ABA_GUIA = "Perguntas"; // aba com imagens e explicações de cada característica
@@ -659,6 +663,12 @@ function buildDataset(rows) {
     const parent = questions.findIndex((o, oi) => oi !== qi && questionKey(o.text).startsWith(ref));
     if (parent < 0) { unresolved.push(q.cond.ref); q.cond = null; return; }
     q.cond = { parent, want: q.cond.neg ? 0 : 1 };
+  });
+
+  // Características exclusivas: só uma espécie da planilha tem Sim
+  questions.forEach((q, qi) => {
+    const ones = species.map((sp, i) => sp.v[qi] === 1 ? i : -1).filter(i => i >= 0);
+    q.unique = ones.length === 1 ? ones[0] : -1;
   });
 
   return {
@@ -1021,6 +1031,7 @@ function newGame() {
     stack: [],       // snapshots para "voltar"
     current: null,
     guessing: null,
+    guessReason: null,
     wrongGuesses: 0,
     picked: null
   };
@@ -1031,7 +1042,7 @@ function snapshot() {
   return {
     w: S.w.slice(), rejected: [...S.rejected], asked: [...S.asked],
     historyLen: S.history.length, current: S.current, guessing: S.guessing,
-    wrongGuesses: S.wrongGuesses, screen: document.body.dataset.screen
+    wrongGuesses: S.wrongGuesses, guessReason: S.guessReason, screen: document.body.dataset.screen
   };
 }
 
@@ -1039,6 +1050,7 @@ function restore(sn) {
   S.w = sn.w; S.rejected = new Set(sn.rejected); S.asked = new Set(sn.asked);
   S.history.length = sn.historyLen; S.current = sn.current; S.guessing = sn.guessing;
   S.wrongGuesses = sn.wrongGuesses;
+  S.guessReason = sn.guessReason ?? null;
   if (sn.screen === "guess") renderGuess(); else renderPlay();
 }
 
@@ -1103,6 +1115,7 @@ function next() {
   if (active.length === 1 || confiante || q === null) {
     S.guessing = top;
     S.current = null;
+    S.guessReason = null;
     return renderGuess();
   }
   S.current = q;
@@ -1126,6 +1139,15 @@ function answer(a) {
     });
     const t = S.w.reduce((x, y) => x + y, 0);
     if (t > 0) S.w = S.w.map(x => x / t);
+  }
+
+  // Resposta Sim numa característica exclusiva: sugere a espécie na hora
+  const u = D.questions[qi].unique;
+  if (RESPOSTA_EXCLUSIVA_DIRETA && a === "sim" && u >= 0 && !S.rejected.has(u)) {
+    S.guessing = u;
+    S.current = null;
+    S.guessReason = qi;
+    return renderGuess();
   }
   next();
 }
@@ -1157,6 +1179,13 @@ function renderPlay() {
 function renderGuess() {
   setScreen("guess");
   const s = D.species[S.guessing];
+  const reason = S.guessReason;
+  const exclusive = reason !== null && reason !== undefined && D.questions[reason];
+  $("guessIntro").textContent = exclusive ? "Característica exclusiva" : "Espécie mais provável";
+  $("guessNote").hidden = !exclusive;
+  if (exclusive) {
+    $("guessNote").textContent = `Na planilha, só esta espécie tem “${D.questions[reason].text}” marcado como Sim. Se não for ela, toque em “Não é essa, continuar” e as perguntas seguem normalmente.`;
+  }
   $("guessName").textContent = s.name;
   $("guessPop").textContent = s.popular;
   $("guessPop").hidden = !s.popular;
